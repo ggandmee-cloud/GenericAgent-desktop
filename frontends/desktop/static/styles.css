@@ -194,6 +194,20 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 .set-block{ display:flex; flex-direction:column; gap:0; }
 .preset-pop{ min-height:0; padding:18px; display:flex; flex-direction:column; gap:14px; }
 .set-sec-t{ font-size:12px; font-weight:500; color:var(--txt-2); margin-bottom:10px; }
+/* W3.3: 设置弹窗组头粘性——滚动时组上下文不丢；弹窗底色遮蔽下层 + hairline 分隔。
+   top:0 钉 padding box 顶(实测 +18px)；::before 盖住上方 padding 缝防内容穿帮 */
+.set-body > .set-block > .set-sec-t{
+  position:sticky; top:0;
+  background:var(--card);
+  padding:6px 0;
+  margin-top:-6px;
+  border-bottom:1px solid var(--divider);
+  z-index:2;
+}
+.set-body > .set-block > .set-sec-t::before{
+  content:''; position:absolute; left:0; right:0; bottom:100%; height:18px;
+  background:var(--card);
+}
 
 /* 外观：mac 式预览卡片 */
 .appear-cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
@@ -484,10 +498,12 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 }
 /* W2.4: 深色下 divider 近不可辨，右缘 hairline 提一档（浅色面差已够不加） */
 html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
-/* V1: 侧栏顶行 = 折叠钮 + 新对话主按钮（顶部品牌标识区删除，Boss 2026-08-12 拍板保持清爽） */
+/* V1: 侧栏顶行 = 新对话主按钮（顶部品牌标识区删除，Boss 2026-08-12 拍板保持清爽）
+   W3+: 折叠钮撤出顶行，左侧留位给 fixed 的 .sb-toggle（28px 钮 + 6px 间距） */
 .sb-top{
   display:flex; align-items:center; gap:6px;
   flex:0 0 auto;
+  padding-left:34px;
 }
 .sb-top .new-conv{ flex:1; min-width:0; }
 /* 纯图标按钮（原顶栏图标钮视觉等价迁移） */
@@ -499,14 +515,17 @@ html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
 }
 .sb-icon-btn:hover{ opacity:1; color:var(--txt); background:var(--surface3); }
 .sb-icon-btn svg{ width:18px; height:18px; transition:transform .2s; }  /* W2.1: 图标 16→18 提高辨识 */
-/* 折叠态常驻展开钮：fixed 左上，仅折叠时可见（低于 modal/menu 层） */
-.sb-expand-fab{
-  position:fixed; top:12px; left:12px; z-index:40;
-  display:none;
+/* W3+: 左上角常驻侧栏开关（Boss 2026-08-13）：展开态融入侧栏顶行(ghost)，
+   折叠态浮于内容上加面色+边界+投影自证可点（低于 modal/menu 层） */
+.sb-toggle{
+  position:fixed; left:12px; z-index:40;
+  /* 与新对话钮(shell-pad + shell-gap 起、高 new-conv-h)垂直居中对位 */
+  top:calc(var(--shell-pad) + var(--shell-gap) + (var(--new-conv-h) - 28px) / 2);
+}
+.body.sb-collapsed .sb-toggle{
   background:var(--panel); border:1px solid var(--line);
   box-shadow:var(--shadow);
 }
-.body.sb-collapsed .sb-expand-fab{ display:inline-flex; }
 
 .ga-num{
   font-family:var(--font-num);
@@ -539,9 +558,15 @@ html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
 
 .chev{ width:14px; height:14px; color:var(--muted2); flex:0 0 auto; }
 /* V1: 侧栏底部服务状态行（原聊天页顶栏 #run-toggle 迁入；.run-state 四态类照常作用）
-   W2.1: 卡片化——浅面胶囊（.sb-status 与 .run-state 同元素，直接覆写） */
+   W2.1: 卡片化——浅面胶囊（.sb-status 与 .run-state 同元素，直接覆写）
+   W3+: 外包 .sb-bottom 一行——状态胶囊占满 + 右侧常驻设置齿轮 */
+.sb-bottom{
+  display:flex; align-items:center; gap:6px;
+  flex:0 0 auto; margin-top:6px;
+}
 .sidebar .sb-status{
-  margin-top:6px; padding:6px 10px;
+  flex:1; min-width:0;
+  margin-top:0; padding:6px 10px;
   justify-content:flex-start; cursor:default;
   height:auto; max-height:none;
   background:var(--surface2);
@@ -549,11 +574,13 @@ html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
   border-radius:var(--r-full);
 }
 
-/* V1: 指挥家页连接状态条（原顶栏状态灯+重试钮迁入内容区顶部） */
+/* V1→W3: 指挥家页连接状态——归位快捷行首, 行内紧凑型（与 pill 同排, 状态灯+短文案+retry 同组） */
 .collab-conn{
-  flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:6px;
-  padding:4px 16px 0;
+  flex:0 0 auto; display:inline-flex; align-items:center; gap:4px;
+  padding:0 8px 0 2px; margin-right:2px;
+  border-right:1px solid var(--divider);
 }
+.collab-conn .run-state{ height:auto; font-size:11.5px; }
 /* V1: 模型菜单功能组（分隔线 + 快速接入/配置行） */
 .ga-menu-sep{ height:1px; background:var(--divider); margin:4px 8px; }
 .ga-menu-item.fn{ display:flex; align-items:center; gap:8px; color:var(--txt-2); }
@@ -713,6 +740,8 @@ html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
 .page.active{ display:flex; }
 .page-pad{ flex:1; overflow:auto; padding:26px 30px; }
 .page-title{ font-size:18px; font-weight:600; color:var(--txt-strong); font-family:var(--font-sans); }
+/* W3.1: 二级页页头行（返回钮 + 标题同排） */
+.page-head-row{ display:flex; align-items:center; gap:8px; margin-left:-6px; }
 .page-sub{ font-size:12px; color:var(--muted); margin-top:5px; margin-bottom:16px; }
 
 /* 聊天 / Conductor 共用对话布局（page--chat-ui）；V1 删顶栏后由 padding-top 补顶距 */
@@ -1064,6 +1093,13 @@ html[data-boot-has-sessions] .chat-start{ display:none !important; }
 }
 .link-btn:disabled{ opacity:.45; cursor:not-allowed; }
 .list-row .link-btn, .list-row .sw-mini{ flex-shrink:0; }
+/* W3.2: 服务行操作钮 ghost 化——hairline 边给出可点边界（原纯文字可点性弱）；全局 .link-btn 不动 */
+.list-row .link-btn{
+  border:1px solid var(--line); border-radius:var(--r-2xs);
+  padding:3px 10px; color:var(--txt-2);
+  transition:background .15s, border-color .15s, color .15s;
+}
+.list-row .link-btn:hover{ background:var(--surface2); border-color:var(--line-strong); color:var(--txt); }
 .list-empty{
   margin-top:14px; padding:24px; text-align:center;
   font-size:13px; color:var(--muted);
@@ -1254,9 +1290,12 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
 .tok-pager button.active{ background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
 .tok-pager-gap{ color:var(--muted); padding:0 4px; font-size:12px; user-select:none; }
 .tok-deleted{ margin-left:6px; font-size:10px; font-weight:400; color:var(--muted2); background:var(--line-soft); border-radius:var(--r-2xs); padding:1px 5px; }
-.stat-row{ display:flex; gap:12px; margin:14px 0; }
-.stat{ flex:1; border:1px solid var(--line); border-radius:var(--radius); background:var(--card); padding:16px; text-align:center; }
-.s-n{ font-size:20px; font-weight:600; color:var(--txt-strong); font-family:var(--font-num); font-variant-numeric:var(--font-num-variant); }
+.stat-row{ display:flex; gap:12px; margin:12px 0; }  /* W3.2: 间距节奏收紧 */
+.stat{ flex:1; border:1px solid var(--line); border-radius:var(--radius); background:var(--card); padding:14px 16px; text-align:center; position:relative; }
+/* W3.2: 统计卡语义 icon（左上角弱化） */
+.stat-ic{ position:absolute; top:10px; left:12px; display:inline-flex; color:var(--muted2); opacity:.6; }
+.stat-ic svg{ width:16px; height:16px; }
+.s-n{ font-size:19px; font-weight:600; color:var(--txt-strong); font-family:var(--font-num); font-variant-numeric:var(--font-num-variant); }
 .s-l{ font-size:11px; color:var(--muted); margin-top:4px; }
 
 .composer{
@@ -2676,7 +2715,15 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
 }
 .page.page--chat-ui[data-page="collab"] > .chat-shell > .chat-panel > .collab-quick{
   flex:0 0 auto;
-  display:flex; flex-wrap:wrap; gap:8px;
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+}
+/* W3.4: worker/conductor 消息浅面气泡（与 user 黑胶囊对仗）——仅包装样式, 渲染逻辑零触碰 */
+.page[data-page="collab"] .msg.assistant > .bubble.md{
+  background:var(--surface2);
+  border:1px solid var(--line);
+  border-radius:var(--r-lg);
+  padding:10px 14px;
+  width:auto; max-width:88%;
 }
 @media (max-width:900px){
   .collab-guide-steps{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:40px 32px; }

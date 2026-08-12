@@ -416,9 +416,20 @@ function setTooltip(el, text) {
     delete el.dataset.tooltip;
   }
 }
+/* W3+: 窗口标题跟随活跃会话名（Boss 2026-08-13「标题栏用会话名」），无会话回退 app.title。
+   Tauri v2 原生标题栏不自动跟随 document.title——须显式 setTitle（capability 需 core:window:allow-set-title，
+   旧壳无权限时静默降级只改 document.title）；调用点=applyI18n(语言/启动) + syncChatHead(会话切换/改名/poll 改题) */
+function syncDocTitle() {
+  let name = '';
+  try { const s = activeSess(); if (s) name = displayTitle(s); } catch (_) { /* 启动早期数据未就绪 */ }
+  const next = name || t('app.title');
+  if (document.title === next) return;
+  document.title = next;
+  try { window.__TAURI__?.window?.getCurrentWindow?.().setTitle(next)?.catch?.(() => {}); } catch (_) {}
+}
 function applyI18n() {
   document.documentElement.lang = (lang === 'en') ? 'en' : 'zh-CN';
-  document.title = t('app.title');
+  syncDocTitle();
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-ph]').forEach(el => {
     const phKey = el.dataset.i18nPh;
@@ -588,8 +599,14 @@ const pages = document.querySelectorAll('#pages .page');
 let currentPage = 'chat';
 /* V1(GV0-B1): nav 缩编后 token/services 无 nav 项——item 可为 null（高亮全灭为合法态），
    数据加载随切页在此触发（原挂 nav click 监听，绕过 nav 直达会白屏）。 */
-function gaGoPage(key) {
+/* W3(§W3.1): token/services 无 nav 项，记来源供页头返回钮还原心智路径。
+   fromSettings 由调用点显式传参（GW0-B1: set-nav-row 先关弹窗后跳页，gaGoPage 自读弹窗开合恒为假） */
+let _pageFrom = { page: 'chat', settings: false };
+function gaGoPage(key, opts = {}) {
   if (![...pages].some(p => p.dataset.page === key)) return;
+  if ((key === 'token' || key === 'services') && currentPage !== key) {
+    _pageFrom = { page: currentPage, settings: !!opts.fromSettings };
+  }
   const item = nav?.querySelector(`.nav-item[data-page="${key}"]`);
   currentPage = key;
   nav.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n === item));
@@ -601,6 +618,15 @@ function gaGoPage(key) {
   if (key === 'services') refreshServicesPanel();
 }
 window.gaGoPage = gaGoPage;
+/* W3: 二级页页头返回钮——回来源页（默认 chat），来源带设置弹窗则重开还原 */
+document.querySelectorAll('.page-back').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const from = _pageFrom;
+    const target = (from.page && from.page !== 'token' && from.page !== 'services') ? from.page : 'chat';
+    gaGoPage(target);
+    if (from.settings) openSettings();
+  });
+});
 nav.addEventListener('click', (e) => {
   const item = e.target.closest('.nav-item');
   if (!item) return;
@@ -619,12 +645,12 @@ bindClick('add-model-btn', (e) => {
   e.stopPropagation();
   openAddModelForm();
 });
-// V1: 设置弹窗「页面」直达组（nav 缩编后 用量/后台服务 的入口）
+// V1: 设置弹窗「页面」直达组（nav 缩编后 用量/后台服务 的入口）；W3: 显式申明来源=设置弹窗
 document.querySelectorAll('.set-nav-row[data-goto-page]').forEach(row => {
   row.addEventListener('click', (e) => {
     e.stopPropagation();
     closeModals();
-    gaGoPage(row.dataset.gotoPage);
+    gaGoPage(row.dataset.gotoPage, { fromSettings: true });
   });
 });
 
@@ -1579,9 +1605,10 @@ const convListEl = document.querySelector('.conv-list');
 const newConvBtn = document.querySelector('.new-conv');
 const searchInput = document.querySelector('.search input');
 const bodyEl     = document.querySelector('.body');
-/* V1: 折叠触发迁侧栏顶行；折叠态由左上角常驻 fab 展开（原页面顶栏已删）。 */
-document.getElementById('sb-collapse-btn')?.addEventListener('click', () => bodyEl.classList.add('sb-collapsed'));
-document.getElementById('sb-expand-fab')?.addEventListener('click', () => bodyEl.classList.remove('sb-collapsed'));
+/* W3+: 左上角常驻单开关（Boss 2026-08-13）——替代 V1 折叠钮+展开 fab 双件 */
+document.getElementById('sb-toggle')?.addEventListener('click', () => bodyEl.classList.toggle('sb-collapsed'));
+/* W3+: 侧栏底部常驻设置齿轮（模型菜单入口保留为第二入口） */
+document.getElementById('sb-settings')?.addEventListener('click', () => openSettings());
 
 const sbResize = document.getElementById('sb-resize');
 const sbPanel  = document.querySelector('.sidebar');
@@ -2891,6 +2918,7 @@ function renderSessionList() {
 /* W1 会话头（UX_SPEC §W1.1）：标题/相对时间/置顶态原位刷新——renderSessionList 全出口 + refreshEmptyState 挂调，
    不新增轮询（标题变更必经列表重画，相对时间搭 60s 慢轮）。显隐条件与 refreshEmptyState 同源。 */
 function syncChatHead() {
+  syncDocTitle();  // W3+: 窗口标题跟随会话名——syncChatHead 全出口覆盖切换/改名/poll 改题
   const head = document.getElementById('chat-head');
   if (!head) return;
   const sess = activeSess();
@@ -6503,7 +6531,7 @@ function bindComposerInRoot(root, opts) {
   function syncCollabStatus() {
     if (!collabStatus) return;
     if (S.conductorTyping && S.serviceAvailable) collabStatus.setBusy(t('status.running'));
-    else if (S.serviceAvailable) collabStatus.setReady();
+    else if (S.serviceAvailable) collabStatus.set(t('collab.connected'), 'ready');  // W3(§W3.4): Conductor 语义与桥接「服务在线」分键（GW0-S5 定死唯一调用点改传文案）
     else if (S.reconnecting || (!S.everConnected && S.failCount < FAIL_MAX)) collabStatus.setConnecting();
     else collabStatus.set(t('collab.offlineShort'), 'offline');  // 顶栏直接显示"无法连接 Conductor(8900)"取代"未连接"
   }

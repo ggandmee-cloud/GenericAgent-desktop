@@ -53,9 +53,6 @@
     <!-- ① 左侧边栏 -->
     <aside class="sidebar">
       <div class="sb-top">
-        <button type="button" class="sb-icon-btn" id="sb-collapse-btn" aria-label="toggle sidebar">
-          <span data-ga-icon="caretLeft"></span>
-        </button>
         <button type="button" class="new-conv">
           <span data-ga-icon="plus"></span>
           <span data-i18n="conv.new"></span>
@@ -96,15 +93,21 @@
         </div>
       </div>
 
-      <!-- V1: 服务状态行（原聊天页顶栏 #run-toggle 迁入，id/类保留使 chatStatus 绑定零改） -->
-      <button class="run-state sb-status" id="run-toggle" type="button">
-        <i class="dot"></i> <span class="rs-label"></span>
-      </button>
+      <!-- V1: 服务状态行（原聊天页顶栏 #run-toggle 迁入，id/类保留使 chatStatus 绑定零改）
+           W3+: 底行右侧加常驻设置齿轮（Boss 2026-08-13「设置按钮找不到」，模型菜单入口保留） -->
+      <div class="sb-bottom">
+        <button class="run-state sb-status" id="run-toggle" type="button">
+          <i class="dot"></i> <span class="rs-label"></span>
+        </button>
+        <button type="button" class="sb-icon-btn" id="sb-settings" data-i18n-title="foot.settings">
+          <span data-ga-icon="gear"></span>
+        </button>
+      </div>
     </aside>
     <div class="sb-resize" id="sb-resize"></div>
-    <!-- V1: 折叠态常驻展开钮（原顶栏折叠钮删除后的替位，仅 .sb-collapsed 时可见） -->
-    <button type="button" class="sb-icon-btn sb-expand-fab" id="sb-expand-fab" aria-label="expand sidebar">
-      <span data-ga-icon="caretRight"></span>
+    <!-- W3+: 左上角常驻侧栏开关（Boss 2026-08-13 拍板；替代 V1 的折叠钮+展开 fab 双件） -->
+    <button type="button" class="sb-icon-btn sb-toggle" id="sb-toggle" data-i18n-title="sb.toggle">
+      <span data-ga-icon="sidebarSimple"></span>
     </button>
 
     <!-- 中间主区 -->
@@ -202,7 +205,13 @@
         <!-- 后台服务：消息通道 + 状态面板 -->
         <section class="page" data-page="services">
           <div class="page-pad">
-            <div class="page-title" data-i18n="page.services.title"></div>
+            <!-- W3: 无 nav 项页面的返回钮（回来源页, 设置弹窗来源则重开） -->
+            <div class="page-head-row">
+              <button type="button" class="sb-icon-btn page-back" data-i18n-title="page.back">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              </button>
+              <div class="page-title" data-i18n="page.services.title"></div>
+            </div>
             <div class="svc-tabs" id="svc-tabs">
               <button type="button" class="svc-tab active" data-tab="channels" data-i18n="page.channels.title"></button>
               <button type="button" class="svc-tab" data-tab="status" data-i18n="page.status.title"></button>
@@ -219,15 +228,6 @@
 
         <!-- 指挥家 Conductor（对话区结构复用 page--chat-ui / chat-shell） -->
         <section class="page page--chat-ui" data-page="collab">
-          <!-- V1: 原顶栏状态条二件套迁入内容区顶部（id 保留，JS 绑定零改） -->
-          <div class="collab-conn">
-            <button class="run-state" id="collab-run-toggle" type="button">
-              <i class="dot"></i> <span class="rs-label"></span>
-            </button>
-            <button type="button" class="sb-icon-btn collab-retry-btn" id="collab-retry" hidden data-i18n-aria-label="collab.retry" aria-label="retry">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            </button>
-          </div>
           <div class="chat-shell">
           <div class="chat-panel">
           <div class="msg-area collab-msgs" id="collab-msgs">
@@ -295,6 +295,15 @@
             </div>
           </div>
           <div class="collab-quick" id="collab-quick">
+            <!-- W3(§W3.4): 连接状态从内容区顶部中央归位到快捷行首（id/JS 绑定零改, V1 先例）；文案改 Conductor 语义与桥接状态区分 -->
+            <div class="collab-conn">
+              <button class="run-state" id="collab-run-toggle" type="button">
+                <i class="dot"></i> <span class="rs-label"></span>
+              </button>
+              <button type="button" class="sb-icon-btn collab-retry-btn" id="collab-retry" hidden data-i18n-aria-label="collab.retry" aria-label="retry">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              </button>
+            </div>
             <button type="button" class="pill" data-prompt-key="collab.chipProgress" data-i18n="collab.chipProgress"></button>
             <button type="button" class="pill" data-prompt-key="collab.chipPause" data-i18n="collab.chipPause"></button>
             <button type="button" class="pill" data-prompt-key="collab.chipSummary" data-i18n="collab.chipSummary"></button>
@@ -339,7 +348,12 @@
         <!-- Token 统计 -->
         <section class="page" data-page="token">
           <div class="page-pad">
-            <div class="page-title" data-i18n="page.token.title"></div>
+            <div class="page-head-row">
+              <button type="button" class="sb-icon-btn page-back" data-i18n-title="page.back">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              </button>
+              <div class="page-title" data-i18n="page.token.title"></div>
+            </div>
             <div class="tok-tabs" id="tok-tabs">
               <button class="tok-tab active" data-tab="chat" data-i18n="tok.tabAll"></button>
               <button class="tok-tab" data-tab="conductor" data-i18n="tok.tabConductor"></button>
@@ -351,10 +365,20 @@
               <input type="text" id="tok-until" class="tok-date" readonly>
               <button class="tok-reset" id="tok-reset" data-i18n="tok.reset"></button>
             </div>
+            <!-- W3(§W3.2): 统计卡语义 icon（累计=Σ/缓存率=闪电/今日=日历, GA 线条风） -->
             <div class="stat-row">
-              <div class="stat"><div class="s-n" id="tok-total-n">0</div><div class="s-l" data-i18n="tok.total"></div></div>
-              <div class="stat"><div class="s-n" id="tok-cost-n">0%</div><div class="s-l" data-i18n="tok.cost"></div></div>
-              <div class="stat"><div class="s-n" id="tok-today-n">0</div><div class="s-l" data-i18n="tok.today"></div></div>
+              <div class="stat">
+                <span class="stat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 4 6 4 13 12 6 20 18 20"/></svg></span>
+                <div class="s-n" id="tok-total-n">0</div><div class="s-l" data-i18n="tok.total"></div>
+              </div>
+              <div class="stat">
+                <span class="stat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+                <div class="s-n" id="tok-cost-n">0%</div><div class="s-l" data-i18n="tok.cost"></div>
+              </div>
+              <div class="stat">
+                <span class="stat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+                <div class="s-n" id="tok-today-n">0</div><div class="s-l" data-i18n="tok.today"></div>
+              </div>
             </div>
             <table class="tok-table" id="tok-table">
               <thead><tr>
