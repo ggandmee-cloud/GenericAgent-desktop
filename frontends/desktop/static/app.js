@@ -3493,16 +3493,22 @@ function showToast(text, opts = {}) {
   if (!el) { el = document.createElement('div'); el.id = 'ga-toast'; el.className = 'ga-toast'; document.body.appendChild(el); }
   el.textContent = text;
   const clickable = typeof opts.onClick === 'function';
+  // 隐藏时必须同步摘 clickable+onclick：.clickable 的 pointer-events:auto 不随 .show 消失，
+  // 残留会在顶部留下隐形热区触发旧跳转（GU3-B1）
+  const dismiss = () => {
+    el.classList.remove('show');
+    el.classList.remove('clickable');
+    el.onclick = null;
+  };
   el.classList.toggle('clickable', clickable);
   el.onclick = clickable ? () => {
     clearTimeout(_toastTimer);
-    el.classList.remove('show');
-    el.onclick = null;
+    dismiss();
     opts.onClick();
   } : null;
   el.classList.add('show');
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => el.classList.remove('show'), clickable ? 5000 : 1800);
+  _toastTimer = setTimeout(dismiss, clickable ? 5000 : 1800);
 }
 
 let tooltipEl = null;
