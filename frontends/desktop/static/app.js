@@ -1482,6 +1482,8 @@ function syncAskUserUi() {
 const GA_ICON = (name, className = '') => (typeof window.gaIcon === 'function' ? window.gaIcon(name, className) : '');
 const SVG_COPY_ICON = GA_ICON('copy');
 const SVG_CHECK_ICON = GA_ICON('check');
+/* §X X1.4: copy 成功态 gaPop 重触发范式（remove→reflow→add, 类保留至下次复制, GX0-S5） */
+function gaPopRetrigger(el){ el.classList.remove('copied'); void el.offsetWidth; el.classList.add('copied'); }
 
 function postRenderEnhance(containerEl) {
   if (!containerEl) return;
@@ -1495,7 +1497,7 @@ function postRenderEnhance(containerEl) {
       btn.title = t('act.copy');
       btn.onclick = () => {
         navigator.clipboard.writeText(block.textContent).then(() => {
-          btn.innerHTML = SVG_CHECK_ICON; setTimeout(() => btn.innerHTML = SVG_COPY_ICON, 1500);
+          btn.innerHTML = SVG_CHECK_ICON; gaPopRetrigger(btn); setTimeout(() => btn.innerHTML = SVG_COPY_ICON, 1500);
         });
       };
       block.parentElement.style.position = 'relative';
@@ -1510,7 +1512,7 @@ function postRenderEnhance(containerEl) {
       const code = btn.closest('.code-block').querySelector('code');
       if (!code) return;
       navigator.clipboard.writeText(code.textContent.trim()).then(() => {
-        btn.textContent = '\u2713';
+        btn.textContent = '\u2713'; gaPopRetrigger(btn);
         setTimeout(() => { btn.textContent = '\u29C9'; }, 1500);
       });
     };
@@ -1525,7 +1527,7 @@ function postRenderEnhance(containerEl) {
     btn.title = t('act.copyTex');
     btn.onclick = () => {
       navigator.clipboard.writeText(src.textContent).then(() => {
-        btn.textContent = '\u2713'; setTimeout(() => btn.textContent = '\u29C9', 1500);
+        btn.textContent = '\u2713'; gaPopRetrigger(btn); setTimeout(() => btn.textContent = '\u29C9', 1500);
       });
     };
     el.style.position = 'relative';
@@ -2238,7 +2240,7 @@ function msgNode(msg) {
         ? stripAttachPlaceholders((typeof msg.display === 'string' && msg.display.length) ? msg.display : (msg.content || ''))
         : assistantCopyText(msg);
       navigator.clipboard.writeText(text).then(() => {
-        copyBtn.innerHTML = SVG_CHECK_ICON;
+        copyBtn.innerHTML = SVG_CHECK_ICON; gaPopRetrigger(copyBtn);
         setTimeout(() => { copyBtn.innerHTML = SVG_COPY_ICON; }, 1500);
       });
     });
@@ -3434,7 +3436,7 @@ function upsert(sess, raw, partial) {
         e.stopPropagation();
         const text = assistantCopyText(m);
         navigator.clipboard.writeText(text).then(() => {
-          copyBtn.innerHTML = SVG_CHECK_ICON;
+          copyBtn.innerHTML = SVG_CHECK_ICON; gaPopRetrigger(copyBtn);
           setTimeout(() => { copyBtn.innerHTML = SVG_COPY_ICON; }, 1500);
         });
       });

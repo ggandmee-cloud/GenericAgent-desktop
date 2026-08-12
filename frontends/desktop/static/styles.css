@@ -56,6 +56,9 @@
   --chipShadow:0 1px 2px rgba(0,0,0,.04),0 6px 18px rgba(20,24,60,.05);
   --on-status:#fff;   /* 彩色状态底上的白字, 深浅同值 */
   --ease-slide:cubic-bezier(.32,.72,0,1); --ease-in-soft:cubic-bezier(.2,.7,.25,1);
+  /* §X 动效 token（UX_SPEC v4.2 X1.1）: 按压/hover/morph 三档时长 + 行族按压面(比 surface3 深一档, 双主题自适应) */
+  --dur-1:90ms; --dur-2:150ms; --dur-3:220ms;
+  --surface-press:color-mix(in srgb, var(--surface3) 88%, var(--md-sys-color-on-surface));
 
   /* —— ④ 语义短名(组件层实际引用) —— */
   --bg:var(--md-sys-color-surface); --surface:var(--md-sys-color-surface-container-lowest);
@@ -254,7 +257,7 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 .set-switch{
   position:relative; flex:0 0 auto; width:44px; height:26px;
   border:none; border-radius:999px; background:var(--switch-off);
-  cursor:pointer; transition:background .2s; padding:0;
+  cursor:pointer; transition:background var(--dur-2), transform var(--dur-1); padding:0;  /* §X 原位合并 */
 }
 .set-switch[aria-checked="true"]{ background:var(--accent); }
 .set-switch-knob{
@@ -291,7 +294,7 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 .chat-font-seg{
   height:7px; border:none; padding:0; margin:0; border-radius:var(--r-full);
   background:var(--line); cursor:pointer;
-  transition:background .12s;
+  transition:background var(--dur-2), transform var(--dur-1);  /* §X 原位合并 */
 }
 .chat-font-seg.on{ background:color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .chat-font-seg.cur{ background:var(--accent); }
@@ -320,7 +323,7 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 .flag{ width:20px; height:14px; flex:0 0 auto; border-radius:calc(var(--r-2xs) - 4px); box-shadow:0 0 0 1px var(--line); display:inline-block; }
 .model-row-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .model-row-actions{
-  display:flex; gap:2px; flex:0 0 auto; opacity:0; transition:opacity .12s;
+  display:flex; gap:2px; flex:0 0 auto; opacity:0; transition:opacity var(--dur-2);  /* §X token 化(GX1-S2 死码回修) */
 }
 .model-row:hover .model-row-actions,
 .model-row.sel .model-row-actions{ opacity:1; }
@@ -441,7 +444,7 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   flex:1; display:flex; align-items:center; justify-content:center;
   padding:7px 10px; border-radius:var(--r-2xs); cursor:pointer;
   font-size:12px; font-weight:500; color:var(--txt-2); font-family:var(--font-sans);
-  transition:background .12s, color .12s; user-select:none;
+  transition:background var(--dur-2), color var(--dur-2), transform var(--dur-1); user-select:none;  /* §X 原位合并 */
 }
 .seg-opt input{ position:absolute; opacity:0; pointer-events:none; }
 .seg-opt:hover{ background:var(--line-soft); color:var(--txt); }
@@ -510,7 +513,7 @@ html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
   width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
   background:transparent; border:none; padding:0; flex:0 0 auto; border-radius:var(--r-full);
   color:var(--txt-2); opacity:.7; cursor:pointer;
-  transition:opacity .15s, color .15s, background .15s;
+  transition:opacity var(--dur-2), color var(--dur-2), background var(--dur-2), transform var(--dur-1);  /* §X 原位合并 */
 }
 .sb-icon-btn:hover{ opacity:1; color:var(--txt); background:var(--surface3); }
 .sb-icon-btn svg{ width:18px; height:18px; transition:transform .2s; }  /* W2.1: 图标 16→18 提高辨识 */
@@ -796,7 +799,7 @@ html[data-appearance="dark"] #titlebar{ border-bottom-color:var(--line); }
   border:1px solid var(--line); border-radius:var(--r-full);
   background:var(--card); color:var(--txt-2); cursor:pointer;
   box-shadow:var(--shadow);
-  transition:color .15s, border-color .15s, background .15s;
+  transition:color var(--dur-2), border-color var(--dur-2), background var(--dur-2), transform var(--dur-1);  /* §X 原位合并 */
 }
 .sn-btn:hover{ color:var(--txt); border-color:var(--line-strong); }
 .sn-btn svg{ width:15px; height:15px; }
@@ -942,7 +945,7 @@ html[data-appearance="dark"] #titlebar{ border-bottom-color:var(--line); }
 .code-block-copy{
   background:none; border:none; color:var(--muted); cursor:pointer;
   font-size:1.1em; padding:2px 4px; border-radius:var(--r-2xs); line-height:1;
-  transition:color .15s, background .15s;
+  transition:color var(--dur-2), background var(--dur-2), transform var(--dur-1);  /* §X 原位合并 */
 }
 .code-block-copy:hover{ color:var(--txt); background:var(--surface2); }
 .code-block pre{ margin:0; border:none; border-radius:0; }
@@ -1033,8 +1036,8 @@ html[data-boot-has-sessions] .chat-start{ display:none !important; }
   font-size:13px; font-weight:500; color:var(--txt2); cursor:pointer; overflow:hidden;
   background:linear-gradient(var(--chipBg),var(--chipBg)) padding-box,var(--chipEdge) border-box;
   box-shadow:var(--chipShadow);
-  transition:transform .12s, box-shadow .2s, color .15s;
-  animation:chipIn .55s cubic-bezier(.2,.7,.25,1) both; animation-delay:var(--d,0ms);
+  transition:transform var(--dur-1), box-shadow var(--dur-2), color var(--dur-2);  /* §X token 化(GX1-B3) */
+  animation:chipIn .55s cubic-bezier(.2,.7,.25,1) backwards; animation-delay:var(--d,0ms);  /* §X GX0-B4 */
 }
 .fcard::after{
   content:''; position:absolute; top:0; bottom:0; left:-60%; width:40%; transform:skewX(-18deg);
@@ -1065,7 +1068,7 @@ html[data-boot-has-sessions] .chat-start{ display:none !important; }
   padding:12px 0 10px; margin-bottom:-1px;
   font-size:14px; font-weight:500; border:none; background:transparent;
   color:var(--muted); cursor:pointer;
-  border-bottom:2px solid transparent; transition:color .15s, border-color .15s;
+  border-bottom:2px solid transparent; transition:color var(--dur-2), border-color var(--dur-2), background var(--dur-2);  /* §X 原位合并 */
 }
 .svc-tab:hover{ color:var(--txt); }
 .svc-tab.active{ color:var(--txt-strong); border-bottom-color:var(--txt-strong); }
@@ -1088,7 +1091,7 @@ html[data-boot-has-sessions] .chat-start{ display:none !important; }
 .lr-st.off{ color:var(--muted); background:var(--off-bg); }
 .lr-st.err{ color:var(--danger-text); background:var(--danger-bg); }
 .sw-mini{ width:32px; height:18px; border:none; border-radius:12px; background:var(--switch-off); position:relative; cursor:pointer; }
-.sw-mini i{ position:absolute; top:2px; left:2px; width:14px; height:14px; background:var(--on-accent); border-radius:50%; transition:.15s; }
+.sw-mini i{ position:absolute; top:2px; left:2px; width:14px; height:14px; background:var(--on-accent); border-radius:50%; transition:left var(--dur-2);  /* §X 显式属性(GX0-S3) */ }
 .sw-mini.on{ background:var(--accent); }
 .sw-mini.on i{ left:16px; }
 .sw-mini:disabled{ opacity:.45; cursor:not-allowed; }
@@ -1103,7 +1106,7 @@ html[data-boot-has-sessions] .chat-start{ display:none !important; }
 .list-row .link-btn{
   border:1px solid var(--line); border-radius:var(--r-2xs);
   padding:3px 10px; color:var(--txt-2);
-  transition:background .15s, border-color .15s, color .15s;
+  transition:background var(--dur-2), border-color var(--dur-2), color var(--dur-2), transform var(--dur-1);  /* §X 原位合并(GX1-S1) */
 }
 .list-row .link-btn:hover{ background:var(--surface2); border-color:var(--line-strong); color:var(--txt); }
 .list-empty{
@@ -1194,7 +1197,7 @@ html[data-boot-has-sessions] .chat-start{ display:none !important; }
   padding:12px 0 10px; margin-bottom:-1px;
   font-size:14px; font-weight:500; border:none; background:transparent;
   color:var(--muted); cursor:pointer;
-  border-bottom:2px solid transparent; transition:color .15s, border-color .15s;
+  border-bottom:2px solid transparent; transition:color var(--dur-2), border-color var(--dur-2), background var(--dur-2);  /* §X 原位合并 */
 }
 .tok-tab:hover{ color:var(--txt); background:transparent; }
 .tok-tab.active{
@@ -1314,7 +1317,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   padding:0 12px; min-height:30px; font-size:12px; font-weight:500; color:var(--txt-2); cursor:pointer;
   font-family:var(--font-sans);
   display:inline-flex; align-items:center; gap:5px;
-  transition:background .15s, transform .12s;
+  transition:background var(--dur-2), transform var(--dur-1);  /* §X token 化 */
 }
 .chip:active{ background:var(--surface2); transform:scale(.95); }
 .chip.sm{
@@ -1404,7 +1407,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   width:36px; height:36px; border-radius:50%; border:none; cursor:pointer;
   background:var(--acc); color:var(--onAcc);
   display:flex; align-items:center; justify-content:center;
-  transition:background .2s, transform .12s;
+  transition:background var(--dur-2), color var(--dur-2), transform var(--dur-1);  /* §X 原位合并+is-stop 形态过渡 */
 }
 .send:hover:not(:disabled):not(.is-stop){ background:color-mix(in srgb, var(--acc) 86%, var(--surface)); }
 .send:active:not(:disabled){ transform:scale(.9); }
@@ -1493,7 +1496,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   padding:10px 10px 3px; user-select:none; flex:0 0 auto;  /* W2.1: 组头上间距随行密度同步收紧 */
 }
 .conv-group:first-child{ padding-top:4px; }
-.conv-item{ display:flex; align-items:flex-start; gap:9px; padding:8px 10px; border-radius:var(--r-xs); cursor:pointer; transition:background .15s; flex:0 0 auto; }  /* W2.1: 密度收紧 9→8 */
+.conv-item{ display:flex; align-items:flex-start; gap:9px; padding:8px 10px; border-radius:var(--r-xs); cursor:pointer; transition:background var(--dur-2); flex:0 0 auto;  /* §X token 化 */ }  /* W2.1: 密度收紧 9→8 */
 .conv-item:hover{ background:var(--surface3); }
 .conv-item:focus-visible{ outline:2px solid var(--acc); outline-offset:-2px; }
 .conv-item.active{ background:var(--surface3); box-shadow:inset 2px 0 0 var(--acc); }
@@ -1541,7 +1544,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   flex:0 0 auto; width:26px; height:26px; border:none; background:transparent;
   color:var(--txt-3); border-radius:var(--r-full); cursor:pointer;
   display:flex; align-items:center; justify-content:center;
-  opacity:0; transition:opacity .12s;
+  opacity:0; transition:opacity var(--dur-2), transform var(--dur-1);  /* §X 原位合并 */
 }
 .ci-more svg{ width:20px; height:20px; }
 .conv-item:hover .ci-more, .conv-item.active .ci-more{ opacity:1; }
@@ -1871,7 +1874,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   color:var(--txt);
   box-shadow:var(--elev-2);
   font-family:var(--font-sans);
-  transition:background .15s, border-color .15s, box-shadow .15s;
+  transition:background var(--dur-2), border-color var(--dur-2), box-shadow var(--dur-2), transform var(--dur-1);  /* §X 原位合并(GX1-B2) */
 }
 .plan-capsule:hover{
   border-color:var(--line-strong);
@@ -2058,7 +2061,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   border-radius:var(--r-xs);
   background:var(--panel);
   cursor:pointer;
-  transition:background .15s, border-color .15s, box-shadow .15s;
+  transition:background var(--dur-2), border-color var(--dur-2), box-shadow var(--dur-2), transform var(--dur-1);  /* §X 原位合并(GX1-B2) */
 }
 .thumb-strip .file-chip.pending:hover{
   background:var(--hover-2);
@@ -2139,7 +2142,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   border-radius:var(--r-xs);
   background:var(--panel);
   cursor:pointer;
-  transition:background .15s, border-color .15s, box-shadow .15s, transform .15s;
+  transition:background var(--dur-2), border-color var(--dur-2), box-shadow var(--dur-2), transform var(--dur-1);  /* §X 原位合并(GX1-B1) */
 }
 .user-files .file-chip:hover{
   background:var(--hover-2);
@@ -2317,7 +2320,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   position:absolute; top:6px; right:6px; z-index:1;
   border:1px solid var(--line); background:var(--card); color:var(--muted);
   border-radius:var(--r-2xs); padding:4px; font-size:0; cursor:pointer;
-  opacity:0; transition:opacity .15s, background .12s;
+  opacity:0; transition:opacity var(--dur-2), background var(--dur-2), transform var(--dur-1);  /* §X 原位合并 */
   display:flex; align-items:center; justify-content:center;
 }
 .bubble.md pre:hover .code-copy-btn{ opacity:1; }
@@ -2331,7 +2334,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   position:absolute; top:4px; right:4px; z-index:1;
   background:none; border:none; color:var(--muted); cursor:pointer;
   font-size:0.82em; padding:2px 4px; border-radius:calc(var(--r-2xs) - 4px); line-height:1;
-  opacity:0; transition:opacity .15s, color .15s, background .15s;
+  opacity:0; transition:opacity var(--dur-2), color var(--dur-2), background var(--dur-2), transform var(--dur-1);  /* §X 原位合并 */
 }
 .katex-block{ position:relative; }
 .katex-block:hover .latex-copy-btn{ opacity:1; }
@@ -2346,7 +2349,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
 .bubble-copy-btn{
   display:inline-flex; align-items:center;
   padding:2px 4px; border:none; background:none;
-  color:var(--muted); cursor:pointer; opacity:0; transition:opacity .15s;
+  color:var(--muted); cursor:pointer; opacity:0; transition:opacity var(--dur-2), transform var(--dur-1);  /* §X 原位合并 */
 }
 .msg:hover .bubble-copy-btn{ opacity:1; }
 .bubble-copy-btn:hover{ color:var(--txt-2); }
@@ -2550,7 +2553,7 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
   border-radius:0 var(--radius-sm) var(--radius-sm) 0;
   background:var(--card); color:var(--muted);
   box-shadow:var(--elev-1);
-  transition:border-color .2s, color .2s, box-shadow .2s;
+  transition:border-color var(--dur-2), color var(--dur-2), box-shadow var(--dur-2), transform var(--dur-1);  /* §X 原位合并(GX1-B2) */
 }
 .collab-rail-handle:hover{ border-color:var(--line-strong); color:var(--txt-2); box-shadow:var(--elev-2); }
 .collab-rail-grip{
@@ -2739,10 +2742,82 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
 }
 
 /* —— 无障碍: 减动效(GA 全局规则 1:1, 含 96 行运行指示器豁免; GR4 必修补齐) —— */
+/* ============ §X 动效全覆盖（UX_SPEC v4.2, Boss 2026-08-13「每个按钮都有动效」）============ */
+/* X1.3 聚合过渡——仅无存量 transition 的成员(有存量者已原位合并, 此处重复声明会整条覆盖) */
+.ic-btn, .modal-x, .model-mixin-caret, .lightbox-x, .model-act, .model-guide-copy,
+.thumb .x, .file-chip .x, .ga-toast .toast-x, .fc-edit, .fc-x{
+  transition:background var(--dur-2), color var(--dur-2), transform var(--dur-1);
+}
+.new-conv, .link-btn, .pill, .rc-card, .preset-restore, .tok-pager button, .chat-font-stepper,
+.plan-btn, .cp-btn, .chan-config-save, .tok-reset{
+  transition:background var(--dur-2), border-color var(--dur-2), color var(--dur-2), transform var(--dur-1);
+}
+.sw-mini{ transition:background var(--dur-2), transform var(--dur-1); }
+.nav-item, .ctx-item, .ga-menu-item, .set-nav-row, .collab-card-sum, .bubble .fold summary, .tok-row-session{
+  transition:background var(--dur-2);
+}
+
+/* X1.2 按压反馈·缩放制——图标钮族(18) scale(.9) */
+.sb-icon-btn:active:not(:disabled), .ic-btn:active:not(:disabled), .modal-x:active:not(:disabled),
+.bubble-copy-btn:active:not(:disabled), .code-copy-btn:active:not(:disabled), .code-block-copy:active:not(:disabled),
+.latex-copy-btn:active:not(:disabled), .ci-more:active:not(:disabled), .model-mixin-caret:active:not(:disabled),
+.lightbox-x:active:not(:disabled), .model-act:active:not(:disabled), .sn-btn:active:not(:disabled),
+.model-guide-copy:active:not(:disabled), .thumb .x:active:not(:disabled),
+.ga-toast .toast-x:active:not(:disabled){
+  transform:scale(.9);
+}
+/* 基态含 translateY(-50%) 垂直居中的三件——复合值防丢定位(GX0-B3 总则) */
+.file-chip .x:active:not(:disabled), .fcard .fc-edit:active:not(:disabled), .fcard .fc-x:active:not(:disabled){
+  transform:translateY(-50%) scale(.9);
+}
+/* X1.2 按压反馈·几何钮族 scale(.96)（存量 chip/fcard/send 保留原值; toast 复合值另列） */
+.new-conv:active:not(:disabled), .set-btn:active:not(:disabled), .preset-restore:active:not(:disabled),
+.link-btn:active:not(:disabled), .tok-pager button:active:not(:disabled), .pill:active:not(:disabled),
+.seg-opt:active:not(:disabled), .chat-font-seg:active:not(:disabled), .chat-font-stepper:active:not(:disabled),
+.rc-card:active:not(:disabled), .sw-mini:active:not(:disabled), .set-switch:active:not(:disabled),
+.appear-card:active:not(:disabled), .cp-btn:active:not(:disabled), .plan-btn:active:not(:disabled),
+.plan-capsule:active:not(:disabled), .thumb-strip .file-chip.pending:active:not(:disabled),
+.user-files .file-chip:active:not(:disabled), .collab-rail-handle:active:not(:disabled),
+.chan-config-save:active:not(:disabled), .tok-reset:active:not(:disabled){
+  transform:scale(.96);
+}
+/* toast 基态含 translateX(-50%) 定位平移——复合值防丢居中(GX0-B3); 过渡沿用存量 .18s 保 opacity/transform 同步(复审 S5) */
+.ga-toast.clickable:active{ transform:translateX(-50%) translateY(0) scale(.98); }
+
+/* X1.2 按压反馈·底色制——宽行/标签族(11), :active:hover 防触屏残留; 键盘反馈面=focus-visible 环(GX0-S6 表态) */
+.conv-item:active:hover, .nav-item:active:hover, .ctx-item:active:hover, .ga-menu-item:active:hover,
+.set-nav-row:active:hover, .tok-row-session:active:hover, .collab-card-sum:active:hover,
+.bubble .fold summary:active:hover, .model-row:active:hover, .svc-tab:active:hover, .tok-tab:active:hover{
+  background:var(--surface-press);
+}
+
+/* X1.4 状态 morph: copy 成功/置顶切换 pop（.copied 由 JS 重触发范式挂, 类保留至下次复制;
+   code-block-copy/latex-copy-btn 为文本钮无 svg——pop 施于本体 */
+@keyframes gaPop{ from{ transform:scale(.82); } to{ transform:none; } }
+.copied svg, .code-block-copy.copied, .latex-copy-btn.copied{ animation:gaPop var(--dur-3) var(--ease-in-soft); }
+.ch-pin.on svg{ animation:gaPop var(--dur-3) var(--ease-in-soft); }
+
 @media (prefers-reduced-motion:reduce){
   *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
   /* 旋转指示器=功能性动效(唯一"在跑"信号), reduce 时仅放慢不冻结 */
   .ga-spin, .send.is-busy::after, .collab-rail-spin{
     animation-duration:.9s !important; animation-iteration-count:infinite !important;
   }
+  /* §X X1.5: 按压缩放/pop 属 transform 位移类, reduce 全豁免——!important 对齐 :active 特异性(GX0-S1);
+     toast 复合值豁免须保留定位平移(总则), 底色制 press 无位移不豁免 */
+  .sb-icon-btn:active, .ic-btn:active, .modal-x:active, .bubble-copy-btn:active, .code-copy-btn:active,
+  .code-block-copy:active, .latex-copy-btn:active, .ci-more:active, .model-mixin-caret:active,
+  .lightbox-x:active, .model-act:active, .sn-btn:active, .model-guide-copy:active,
+  .thumb .x:active, .ga-toast .toast-x:active,
+  .new-conv:active, .set-btn:active, .preset-restore:active, .link-btn:active, .tok-pager button:active,
+  .pill:active, .seg-opt:active, .chat-font-seg:active, .chat-font-stepper:active, .rc-card:active,
+  .sw-mini:active, .set-switch:active, .appear-card:active, .cp-btn:active, .plan-btn:active,
+  .plan-capsule:active, .thumb-strip .file-chip.pending:active, .user-files .file-chip:active, .collab-rail-handle:active,
+  .chan-config-save:active, .tok-reset:active, .chip:active, .fcard:active, .send:active{
+    transform:none !important;
+  }
+  /* 基态含定位平移者豁免=回归基态(复合总则) */
+  .file-chip .x:active, .fcard .fc-edit:active, .fcard .fc-x:active{ transform:translateY(-50%) !important; }
+  .ga-toast.clickable:active{ transform:translateX(-50%) translateY(0) !important; }
+  .copied svg, .code-block-copy.copied, .latex-copy-btn.copied, .ch-pin.on svg{ animation:none !important; }
 }
