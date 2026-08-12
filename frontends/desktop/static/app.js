@@ -2800,7 +2800,7 @@ function syncConvTicker() {
   // 慢轮兼做跨零点组头刷新（GU2-S3）：renderSessionList 的签名含 groupKey，日界翻转时自动重建
   if (!_convSlowId) _convSlowId = setInterval(() => { tickConvMetas(false); renderSessionList(); }, 60000);
 }
-if (searchInput) searchInput.addEventListener('input', () => renderSessionList());
+if (searchInput) searchInput.addEventListener('input', () => { hideTooltip(); renderSessionList(); });  // GU4-S3: 键入即收快捷键 tooltip
 async function ensureBridgeSession(sess) {
   if (sess.bridgeSessionId) return sess.bridgeSessionId;
   const res = await window.ga.rpc('session/new', { cwd: '', mcp_servers: [] });
@@ -3054,7 +3054,16 @@ convMenu.addEventListener('click', (e) => {
     inp.addEventListener('blur', () => finish(true));
     return;
   } else if (sess && act === 'del') {
-    closeSession(sess.id);
+    /* GU4 整改：删除加 danger 确认——与模型删除(showConfirmDialog okKind:'danger')对齐。
+       右键入口让删除更易触达，而裸删直达桥接 DELETE 不可恢复（监察事故 #015 实证）。 */
+    hideConvMenu();
+    showConfirmDialog({
+      title: t('common.delete'),
+      message: t('confirm.convDelete', { title: displayTitle(sess) }),
+      okText: t('common.delete'),
+      okKind: 'danger'
+    }).then(ok => { if (ok) closeSession(sess.id); });
+    return;
   }
   hideConvMenu();
 });
@@ -3085,8 +3094,11 @@ newConvBtn.addEventListener('click', (e) => {
 /* U4: 全局快捷键（UX_SPEC §5）——⌘K/Ctrl+K 聚焦搜索、⌘N/Ctrl+N 新对话；
    IME 组合期间忽略；不占用 Shift/Alt 组合；Esc 单独绑在搜索框（见下），不进全局 Esc 链 */
 document.addEventListener('keydown', (e) => {
-  if (e.isComposing) return;
-  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+  if (e.isComposing || e.repeat) return;  // GU4-S2: 长按防连发（⌘N 会打真桥接建会话）
+  // GU4-S1: 平台二选一——mac 只认 ⌘（不占 Ctrl+K 的 kill-line），其余平台只认 Ctrl
+  const isMac = /mac/i.test(navigator.platform);
+  const mod = isMac ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey);
+  if (!mod || e.altKey || e.shiftKey) return;
   const k = (e.key || '').toLowerCase();
   if (k === 'k') {
     e.preventDefault();
