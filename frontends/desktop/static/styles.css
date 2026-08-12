@@ -50,6 +50,7 @@
   --chipBg:color-mix(in srgb,var(--surface) 82%,transparent);
   --chipEdge:linear-gradient(var(--line),var(--line));
   --chipShadow:0 1px 2px rgba(0,0,0,.04),0 6px 18px rgba(20,24,60,.05);
+  --on-status:#fff;   /* 彩色状态底上的白字, 深浅同值 */
   --ease-slide:cubic-bezier(.32,.72,0,1); --ease-in-soft:cubic-bezier(.2,.7,.25,1);
 
   /* —— ④ 语义短名(组件层实际引用) —— */
@@ -2411,7 +2412,7 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
 /* 收尾按钮:跟 .preset-restore 同款 — 白底 + 中性边框, hover 转 accent 色 */
 .collab-retry-btn{
   width:24px; height:24px;
-  border:1px solid var(--line); background:var(--card); border-radius:4px;
+  border:1px solid var(--line); background:var(--card); border-radius:var(--r-2xs);
   opacity:1; color:var(--txt-2);
 }
 .collab-retry-btn:hover{ background:var(--hover-2); color:var(--accent); border-color:var(--accent); opacity:1; }
@@ -2449,12 +2450,12 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
   border:1px solid var(--line); border-left:none;
   border-radius:0 var(--radius-sm) var(--radius-sm) 0;
   background:var(--card); color:var(--muted);
-  box-shadow:2px 0 8px rgba(0,0,0,.06);
+  box-shadow:var(--elev-1);
   transition:border-color .2s, color .2s, box-shadow .2s;
 }
-.collab-rail-handle:hover{ border-color:var(--line-strong); color:var(--txt-2); box-shadow:2px 0 12px rgba(0,0,0,.1); }
+.collab-rail-handle:hover{ border-color:var(--line-strong); color:var(--txt-2); box-shadow:var(--elev-2); }
 .collab-rail-grip{
-  width:3px; height:18px; border-radius:2px;
+  width:3px; height:18px; border-radius:var(--r-full);
   background:linear-gradient(180deg, transparent, var(--line-strong) 20%, var(--line-strong) 80%, transparent);
   opacity:.55;
 }
@@ -2493,7 +2494,7 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
   position:absolute; top:0; left:0; bottom:0; width:232px; z-index:12;
   display:flex; flex-direction:column; overflow:hidden;
   background:var(--panel); border-right:1px solid var(--line);
-  box-shadow:4px 0 16px rgba(0,0,0,.06);
+  box-shadow:var(--elev-2);
   transform:translateX(-100%); transition:transform .22s ease-out;
   pointer-events:none;
 }
@@ -2513,7 +2514,7 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
 }
 .collab-stat{
   display:inline-flex; align-items:center; gap:4px;
-  font-size:10px; font-weight:500; padding:2px 7px; border-radius:4px;
+  font-size:10px; font-weight:500; padding:2px 8px; border-radius:var(--r-full);
   line-height:1.35;
 }
 .collab-stat--running{ color:var(--ok); background:color-mix(in srgb, var(--ok) 10%, var(--panel)); }
@@ -2531,13 +2532,13 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
 }
 .collab-card{
   position:relative;
-  border:1px solid var(--line); border-radius:6px; background:var(--card);
+  border:1px solid var(--line); border-radius:var(--r-xs); background:var(--card);
   padding:8px 10px 8px 12px; margin-bottom:6px; border-left:3px solid var(--collab-st, var(--line));
-  box-shadow:0 1px 4px rgba(0,0,0,.04);
+  box-shadow:var(--elev-1);
   transition:border-color .3s, box-shadow .3s, transform .2s;
 }
 .collab-card.pulse{ animation:collab-rail-pulse .55s ease-out; }
-.collab-card:hover{ transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,.07); }
+.collab-card:hover{ transform:translateY(-1px); box-shadow:var(--elev-2); }
 .collab-card--running{ --collab-st:var(--ok); }
 .collab-card--reported{ --collab-st:var(--muted); }
 .collab-card--paused{ --collab-st:var(--amber); }
@@ -2571,8 +2572,8 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
   flex:1; overflow-y:auto; padding:16px; font-size:13px; line-height:1.55; color:var(--txt);
 }
 .collab-drawer-body p,.collab-drawer-body ul,.collab-drawer-body ol,.collab-drawer-body pre{ margin:0 0 .5em; }
-.collab-drawer-body code{ font-size:12px; background:var(--field-bg); padding:1px 4px; border-radius:4px; }
-.collab-drawer-body pre code{ display:block; padding:8px; border-radius:6px; white-space:pre-wrap; }
+.collab-drawer-body code{ font-size:12px; background:var(--codeBg); padding:1.5px 6px; border-radius:var(--r-2xs); }
+.collab-drawer-body pre code{ display:block; padding:8px; border-radius:var(--r-2xs); white-space:pre-wrap; }
 .collab-msg-enter{ animation:collab-msg-in .35s ease-out both; }
 .bubble.sys .collab-wait-dots{
   display:inline-flex; align-items:center; justify-content:center; gap:5px;
@@ -2594,7 +2595,6 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
   to{ opacity:1; transform:translateY(0); }
 }
 .collab-guide{ width:100%; max-width:var(--chat-col-w); margin:0 auto; }
-.collab-guide .feature-head{ text-align:center; margin-bottom:22px; }
 .collab-guide .page-title{ font-size:20px; line-height:1.35; margin-bottom:2px; }
 .collab-guide .page-sub{ font-size:13px; line-height:1.55; margin-top:10px; margin-bottom:0; }
 .collab-guide-steps{
@@ -2606,7 +2606,7 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
   text-align:center; min-height:100%;
 }
 .collab-guide-ic{
-  flex:0 0 auto; width:52px; height:52px; border-radius:14px;
+  flex:0 0 auto; width:52px; height:52px; border-radius:var(--r-sm);
   display:flex; align-items:center; justify-content:center;
   background:color-mix(in srgb, var(--accent) 10%, var(--panel));
   color:var(--accent);
@@ -2617,8 +2617,8 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
 .collab-guide-label{ font-size:14px; font-weight:500; color:var(--txt-strong); line-height:1.35; }
 .collab-guide-desc{ font-size:12px; font-weight:400; font-style:italic; color:var(--muted); line-height:1.55; }
 .collab-nav-badge{
-  margin-left:auto; min-width:18px; height:18px; padding:0 5px; border-radius:999px;
-  background:var(--ok); color:#fff; font-size:10px; font-weight:500; line-height:1; text-align:center;
+  margin-left:auto; min-width:18px; height:18px; padding:0 5px; border-radius:var(--r-full);
+  background:var(--ok); color:var(--on-status); font-size:10px; font-weight:500; line-height:1; text-align:center;
 }
 .page.page--chat-ui[data-page="collab"] > .chat-shell > .chat-panel > .collab-quick{
   flex:0 0 auto;
