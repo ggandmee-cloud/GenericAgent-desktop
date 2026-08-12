@@ -459,6 +459,7 @@ function selectLang(code) {
   if (!LANGS.includes(code) || lang === code) return;
   lang = code;
   applyI18n();
+  _convListSig = '';  // W1 顺手修存量缺陷: 签名不含语言，不破签名则组头/meta 文案停留旧语言
   renderSessionList();
   refreshStatusLabel();
   updateModelChip();
@@ -1633,6 +1634,7 @@ function refreshEmptyState(sess) {
   msgArea.classList.toggle('has-msgs', !!has);
   if (chatStart) chatStart.style.display = has ? 'none' : '';
   if (msgsEl) msgsEl.style.display = has ? '' : 'none';
+  syncChatHead();  // W1: 会话头显隐与本函数同源（有消息才显示）
 }
 
 function planTpl(tpl, v) {
@@ -2208,7 +2210,18 @@ function msgNode(msg) {
         setTimeout(() => { copyBtn.innerHTML = SVG_COPY_ICON; }, 1500);
       });
     });
-    el.appendChild(copyBtn);
+    /* W1(§W1.2): hover 行容器收纳复制钮+时间戳同排（时间戳为按钮兄弟节点，
+       禁止入按钮内——复制回调 innerHTML 轮替会抹掉）；静态相对时间不入 ticker，无 ts 不渲染 */
+    const hoverRow = document.createElement('div');
+    hoverRow.className = 'msg-hover-row';
+    hoverRow.appendChild(copyBtn);
+    if (msg.ts) {
+      const tsEl = document.createElement('span');
+      tsEl.className = 'msg-ts';
+      tsEl.textContent = relTime(normTs(msg.ts));
+      hoverRow.appendChild(tsEl);
+    }
+    el.appendChild(hoverRow);
   }
   return el;
 }
@@ -2803,13 +2816,13 @@ function renderSessionList() {
      签名不变直接跳过 —— 消掉 poll 每拍的 innerHTML 全量重建（评审 D8）。 */
   const sig = JSON.stringify([query, state.activeId, currentPage === 'chat',
     rows.map(x => [x.s.id, !!x.s.pinned, x.busy, x.unseen, displayTitle(x.s), x.g, Math.floor(normTs(x.s.lastActiveTs) / 60e3)])]);
-  if (sig === _convListSig) { syncConvTicker(); return; }
+  if (sig === _convListSig) { syncConvTicker(); syncChatHead(); renderRecentStrip(); return; }
   _convListSig = sig;
   convListEl.innerHTML = '';
   if (rows.length === 0) {
     const e = document.createElement('div');
     e.className = 'conv-empty'; e.textContent = t(query ? 'conv.emptySearch' : 'conv.emptyList');
-    convListEl.appendChild(e); syncConvTicker(); return;
+    convListEl.appendChild(e); syncConvTicker(); syncChatHead(); renderRecentStrip(); return;
   }
   let lastG = null;
   for (const { s: sess, busy, unseen, g } of rows) {
@@ -2842,6 +2855,63 @@ function renderSessionList() {
     convListEl.appendChild(item);
   }
   syncConvTicker();
+  syncChatHead();       // W1: 全出口挂接（标题变更/置顶/completed 元信息汇聚点）
+  renderRecentStrip();
+}
+/* W1 会话头（UX_SPEC §W1.1）：标题/相对时间/置顶态原位刷新——renderSessionList 全出口 + refreshEmptyState 挂调，
+   不新增轮询（标题变更必经列表重画，相对时间搭 60s 慢轮）。显隐条件与 refreshEmptyState 同源。 */
+function syncChatHead() {
+  const head = document.getElementById('chat-head');
+  if (!head) return;
+  const sess = activeSess();
+  const has = !!(sess && sess.messages && sess.messages.length > 0);
+  head.hidden = !has;
+  if (!has) return;
+  const title = displayTitle(sess);
+  const titleEl = document.getElementById('ch-title');
+  if (titleEl && titleEl.textContent !== title) {
+    titleEl.textContent = title;
+    setTooltip(titleEl, title);
+    titleEl.setAttribute('aria-label', title);  // setTooltip 的 aria 守卫只写一次，标题变更须强制跟新
+  }
+  const metaEl = document.getElementById('ch-meta');
+  const meta = relTime(normTs(sess.lastActiveTs));
+  if (metaEl && metaEl.textContent !== meta) metaEl.textContent = meta;
+  const pinBtn = document.getElementById('ch-pin');
+  if (pinBtn) {
+    pinBtn.classList.toggle('on', !!sess.pinned);
+    const k = sess.pinned ? 'ctx.unpin' : 'ctx.pin';
+    setTooltip(pinBtn, t(k));
+    pinBtn.setAttribute('aria-label', t(k));
+  }
+}
+/* W1 最近会话回访（UX_SPEC §W1.4）：sortedSessions 前 3，与列表同数据源同节拍；
+   全出口调用（含空列表——删光会话必须清空 strip，防残留已删会话卡，GW0-S7） */
+let _recentSig = '';
+function renderRecentStrip() {
+  const strip = document.getElementById('recent-strip');
+  const cards = document.getElementById('rs-cards');
+  if (!strip || !cards) return;
+  const top = sortedSessions().slice(0, 3);
+  strip.hidden = top.length === 0;
+  // poll 每拍会走到这里（renderSessionList 全出口挂接）——内容签名防抖，避免重建打断 hover
+  const sig = top.map(s => `${s.id}\u001e${displayTitle(s)}\u001e${Math.floor(normTs(s.lastActiveTs) / 60e3)}`).join('\u001f');
+  if (sig === _recentSig) return;
+  _recentSig = sig;
+  cards.innerHTML = '';
+  for (const s of top) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'rc-card';
+    card.dataset.id = s.id;
+    const title = displayTitle(s);
+    card.innerHTML =
+      `<span class="rc-t">${escapeHtml(title)}</span>` +
+      `<span class="rc-m">${escapeHtml(relTime(normTs(s.lastActiveTs)))}</span>`;
+    card.setAttribute('aria-label', title);
+    card.addEventListener('click', () => setActiveSession(s.id));
+    cards.appendChild(card);
+  }
 }
 /* U2 ticker（UX_SPEC §3）：全局单 interval，有 busy 行才活跃；每拍只改 .ci-meta 的 textContent，
    不重建任何节点。慢速轮（60s）让空闲行相对时间不陈旧，同样只原位改文本。 */
@@ -3052,71 +3122,97 @@ convListEl.addEventListener('click', (e) => {
     if (chatNav && !chatNav.classList.contains('active')) chatNav.click();
   }
 });
+/* W1 抽取：置顶切换——conv-menu 与 chat-head 两入口共用（UX_SPEC §W1.1，范围含持久化三行 GW0-S1） */
+function togglePinSession(sess) {
+  if (!sess) return;
+  if (sess.pinned) {
+    sess.pinned = false;       // 取消置顶 + 放到 pinned 之后、其它 unpinned 之前(unpinned 区域顶部)
+    const others = [...state.sessions.values()].filter(s => s.id !== sess.id);
+    const m = new Map();
+    for (const s of others) if (s.pinned) m.set(s.id, s);  // 先所有仍 pinned 的
+    m.set(sess.id, sess);                                   // 再本会话(刚 unpinned)
+    for (const s of others) if (!s.pinned) m.set(s.id, s);  // 再其它 unpinned
+    state.sessions = m;
+  } else {
+    sess.pinned = true;        // 置顶 + 移到列表顶
+    const m = new Map(); m.set(sess.id, sess);
+    for (const [k, v] of state.sessions) if (k !== sess.id) m.set(k, v);
+    state.sessions = m;
+  }
+  saveSessions();
+  patchSession(sess, { pinned: sess.pinned });
+  renderSessionList();
+}
+/* W1 抽取：改名输入流——行为契约不变（输入框在侧栏行原位、Esc 取消不落库、Enter/blur 落库，U5-R1~R3 基准）。
+   chat-head 入口兜底（UX_SPEC §W1.1）：折叠态先展开（⌘K 同款语句）；搜索过滤掉活跃会话时先清搜索重画再进入 */
+function beginRenameSession(sess) {
+  if (!sess) return;
+  bodyEl.classList.remove('sb-collapsed');
+  let item = convListEl.querySelector(`.conv-item[data-id="${sess.id}"]`);
+  if (!item && searchInput && searchInput.value) {
+    searchInput.value = '';
+    renderSessionList();
+    item = convListEl.querySelector(`.conv-item[data-id="${sess.id}"]`);
+  }
+  if (!item) return;
+  const titleEl = item.querySelector('.ci-title');
+  if (!titleEl) return;
+  const oldTitle = sess.title || '';
+  item.classList.add('renaming');
+  const inp = document.createElement('input');
+  inp.className = 'ci-rename-input';
+  inp.dataset.noSessionSelect = '1';
+  inp.maxLength = 50;
+  inp.value = oldTitle;
+  titleEl.replaceWith(inp);
+  bindToastLimit(inp);
+  inp.focus();
+  inp.select();
+  const finish = (save) => {
+    if (inp._done) return;
+    inp._done = true;
+    const val = inp.value.trim();
+    if (save && val && val !== oldTitle) {
+      sess.title = val;
+      sess.untitled = false;
+      saveSessions();
+      patchSession(sess, { title: val, untitled: false });
+      const history = tokLoadHistory();
+      const sid = sess.bridgeSessionId || sess.id;
+      let changed = false;
+      history.forEach(h => { if (h.sessionId === sid) { h.title = val; changed = true; } });
+      if (changed) tokSaveHistory(history);
+    }
+    // U2: 先摘输入框再破签名——renderSessionList 对改名态有重画守卫，不摘会跳过重建；
+    // 取消改名时签名可能与改名前一致，不破签名该行会停留在被 replaceWith 掏空的状态
+    inp.remove();
+    _convListSig = '';
+    renderSessionList();
+  };
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  inp.addEventListener('blur', () => finish(true));
+}
+/* W1: 会话头操作绑定（置顶/改名与 conv-menu 同函数，双击标题=改名） */
+{
+  const chPin = document.getElementById('ch-pin');
+  const chRename = document.getElementById('ch-rename');
+  const chTitle = document.getElementById('ch-title');
+  chPin?.addEventListener('click', () => { const s = activeSess(); if (s) togglePinSession(s); });
+  chRename?.addEventListener('click', () => { const s = activeSess(); if (s) beginRenameSession(s); });
+  chTitle?.addEventListener('dblclick', () => { const s = activeSess(); if (s) beginRenameSession(s); });
+}
 convMenu.addEventListener('click', (e) => {
   e.stopPropagation();
   const act = e.target.closest('.ctx-item')?.dataset.act;
   const sess = menuTargetId && state.sessions.get(menuTargetId);
   if (sess && act === 'pin') {
-    if (sess.pinned) {
-      sess.pinned = false;       // 取消置顶 + 放到 pinned 之后、其它 unpinned 之前(unpinned 区域顶部)
-      const others = [...state.sessions.values()].filter(s => s.id !== sess.id);
-      const m = new Map();
-      for (const s of others) if (s.pinned) m.set(s.id, s);  // 先所有仍 pinned 的
-      m.set(sess.id, sess);                                   // 再本会话(刚 unpinned)
-      for (const s of others) if (!s.pinned) m.set(s.id, s);  // 再其它 unpinned
-      state.sessions = m;
-    } else {
-      sess.pinned = true;        // 置顶 + 移到列表顶
-      const m = new Map(); m.set(sess.id, sess);
-      for (const [k, v] of state.sessions) if (k !== sess.id) m.set(k, v);
-      state.sessions = m;
-    }
-    saveSessions();
-    patchSession(sess, { pinned: sess.pinned });
-    renderSessionList();
+    togglePinSession(sess);
   } else if (sess && act === 'rename') {
     hideConvMenu();
-    const item = convListEl.querySelector(`.conv-item[data-id="${sess.id}"]`);
-    if (!item) return;
-    const titleEl = item.querySelector('.ci-title');
-    if (!titleEl) return;
-    const oldTitle = sess.title || '';
-    item.classList.add('renaming');
-    const inp = document.createElement('input');
-    inp.className = 'ci-rename-input';
-    inp.dataset.noSessionSelect = '1';
-    inp.maxLength = 50;
-    inp.value = oldTitle;
-    titleEl.replaceWith(inp);
-    bindToastLimit(inp);
-    inp.focus();
-    inp.select();
-    const finish = (save) => {
-      if (inp._done) return;
-      inp._done = true;
-      const val = inp.value.trim();
-      if (save && val && val !== oldTitle) {
-        sess.title = val;
-        sess.untitled = false;
-        saveSessions();
-        patchSession(sess, { title: val, untitled: false });
-        const history = tokLoadHistory();
-        const sid = sess.bridgeSessionId || sess.id;
-        let changed = false;
-        history.forEach(h => { if (h.sessionId === sid) { h.title = val; changed = true; } });
-        if (changed) tokSaveHistory(history);
-      }
-      // U2: 先摘输入框再破签名——renderSessionList 对改名态有重画守卫，不摘会跳过重建；
-      // 取消改名时签名可能与改名前一致，不破签名该行会停留在被 replaceWith 掏空的状态
-      inp.remove();
-      _convListSig = '';
-      renderSessionList();
-    };
-    inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
-    });
-    inp.addEventListener('blur', () => finish(true));
+    beginRenameSession(sess);
     return;
   } else if (sess && act === 'del') {
     /* GU4 整改：删除加 danger 确认——与模型删除(showConfirmDialog okKind:'danger')对齐。
@@ -3275,7 +3371,16 @@ function upsert(sess, raw, partial) {
           setTimeout(() => { copyBtn.innerHTML = SVG_COPY_ICON; }, 1500);
         });
       });
-      r.draftEl.appendChild(copyBtn);
+      const hoverRow = document.createElement('div');  // W1: 与 msgNode 同构的 hover 行（复制钮+时间戳）
+      hoverRow.className = 'msg-hover-row';
+      hoverRow.appendChild(copyBtn);
+      if (m.ts) {
+        const tsEl = document.createElement('span');
+        tsEl.className = 'msg-ts';
+        tsEl.textContent = relTime(normTs(m.ts));
+        hoverRow.appendChild(tsEl);
+      }
+      r.draftEl.appendChild(hoverRow);
     }
     r.draftEl = null; r.draftSegs = null; r.draftTurn = 0; r.streamTurn = 0;
     sess.messages.push(m);
@@ -5189,11 +5294,34 @@ function makeCardEl({ kind, dataAttrs, iconSvg, titleText, descText, removable, 
   return card;
 }
 
+/* W1(§W1.4): 语义分组——模式组（改变会话形态）与任务组（可执行模板+自定义+添加卡） */
+const PRESET_GROUP_MODES = ['butler', 'plan', 'goal', 'autonomous', 'hive'];
 function renderAllPresets() {
   document.querySelectorAll('.feature-grid').forEach(grid => {
     grid.innerHTML = '';
-    for (const bp of BUILTIN_PRESETS) {
-      if (state.hiddenBuiltins.has(bp.key)) continue;
+    const addLabel = (key) => {
+      const lab = document.createElement('div');
+      lab.className = 'fg-label';
+      lab.textContent = t(key);
+      grid.appendChild(lab);
+    };
+    const modes = BUILTIN_PRESETS.filter(bp => PRESET_GROUP_MODES.includes(bp.key) && !state.hiddenBuiltins.has(bp.key));
+    const tasks = BUILTIN_PRESETS.filter(bp => !PRESET_GROUP_MODES.includes(bp.key) && !state.hiddenBuiltins.has(bp.key));
+    if (modes.length) {
+      addLabel('preset.groupModes');
+      for (const bp of modes) {
+        grid.appendChild(makeCardEl({
+          kind: 'fcard-builtin',
+          dataAttrs: { preset: bp.key },
+          iconSvg: bp.iconSvg,
+          titleText: t(bp.titleKey),
+          descText: t(bp.descKey),
+          removable: true,
+        }));
+      }
+    }
+    addLabel('preset.groupTasks');  // 任务组恒在（至少含添加卡）
+    for (const bp of tasks) {
       grid.appendChild(makeCardEl({
         kind: 'fcard-builtin',
         dataAttrs: { preset: bp.key },
@@ -5223,7 +5351,7 @@ function renderAllPresets() {
       removable: false,
     });
     grid.appendChild(addCard);
-    // C12 交错入场: 每枚 chip 40ms 延迟(上限 12 枚, 防自定义过多时久等)
+    // C12 交错入场: 每枚 chip 40ms 延迟(上限 12 枚, 防自定义过多时久等)；组标签不占计数（.fcard 选择器天然跳过）
     grid.querySelectorAll('.fcard').forEach((el, i) => el.style.setProperty('--d', `${Math.min(i, 12) * 40}ms`));
   });
   updateRestoreBtnVisibility();

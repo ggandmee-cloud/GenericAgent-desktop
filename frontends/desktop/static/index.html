@@ -116,11 +116,29 @@
         <section class="page active page--chat-ui" data-page="chat">
           <div class="chat-shell">
           <div class="chat-panel">
+          <!-- W1: 会话头（有消息才显示；flex 常规流子项，不入 msg-area 滚动几何——UX_SPEC §W1.1 红线） -->
+          <div class="chat-head" id="chat-head" hidden>
+            <span class="ch-title" id="ch-title"></span>
+            <span class="ch-meta" id="ch-meta"></span>
+            <span class="ch-actions">
+              <button type="button" class="sb-icon-btn ch-pin" id="ch-pin">
+                <span data-ga-icon="pushPinSimple"></span>
+              </button>
+              <button type="button" class="sb-icon-btn ch-rename" id="ch-rename" data-i18n-title="ctx.rename">
+                <span data-ga-icon="pencilSimple"></span>
+              </button>
+            </span>
+          </div>
           <div class="msg-area">
             <div class="chat-start">
               <div class="feature-head">
                 <div class="page-title" data-i18n="chat.startTitle"></div>
                 <div class="page-sub" data-i18n="chat.startSub"></div>
+              </div>
+              <!-- W1: 最近会话回访（无会话时整块隐藏） -->
+              <div class="recent-strip" id="recent-strip" hidden>
+                <div class="rs-head" data-i18n="chat.recent"></div>
+                <div class="rs-cards" id="rs-cards"></div>
               </div>
               <div class="feature-grid"></div>
             </div>
