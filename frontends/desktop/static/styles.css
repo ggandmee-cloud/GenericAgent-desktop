@@ -702,12 +702,40 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   display:flex; flex-direction:column;
   gap:var(--chat-stack-gap);
   box-sizing:border-box;
+  position:relative;  /* V2: 回顶回底浮钮的定位锚 */
+}
+/* V2: 回顶回底浮钮（竖排玻璃胶囊，composer 上方右下角） */
+.scroll-nav{
+  position:absolute; right:14px; bottom:8px; z-index:30;
+  display:none; flex-direction:column; gap:6px;
+}
+.scroll-nav.on{ display:flex; }
+.sn-btn{
+  width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid var(--line); border-radius:var(--r-full);
+  background:var(--card); color:var(--txt-2); cursor:pointer;
+  box-shadow:var(--shadow);
+  transition:color .15s, border-color .15s, background .15s;
+}
+.sn-btn:hover{ color:var(--txt); border-color:var(--line-strong); }
+.sn-btn svg{ width:15px; height:15px; }
+.sn-btn .sn-flip{ transform:rotate(180deg); display:inline-flex; }  /* hydrate 会把类转移到 svg 本身，故 transform 直挂类名 */
+.sn-btn[hidden]{ display:none !important; }
+/* 完成点亮：活跃会话顶置阅读中收尾，不抢滚改脉冲提示（UX_SPEC §V2.4） */
+.sn-btn.done{ color:var(--on-accent); background:var(--accent); border-color:var(--accent); animation:snDonePulse 1.6s ease-in-out infinite; }
+@keyframes snDonePulse{
+  0%,100%{ box-shadow:0 0 0 0 var(--accent-soft); }
+  50%{ box-shadow:0 0 0 6px var(--accent-soft); }
+}
+@media (prefers-reduced-motion: reduce){
+  .sn-btn.done{ animation:none; }  /* 静态高亮保留，脉冲豁免（R4 全局规则） */
 }
 .page.page--chat-ui .msg-area{
   position:relative;
   flex:1; min-height:0;
   width:100%;
   overflow:auto;
+  overflow-anchor:none;  /* V2: 程序化锚定(pinReplyTop)与浏览器原生滚动锚定互斥 */
   display:flex;
   flex-direction:column;
   align-items:stretch;

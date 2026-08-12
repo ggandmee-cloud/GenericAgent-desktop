@@ -2268,13 +2268,90 @@ function appendMessage(sess, msg) {
       r.taskStartedAt = null; r.taskEndedAt = null;
     }
   }
-  refreshEmptyState(sess); scrollBottom(true);
+  refreshEmptyState(sess);
+  // V2(W1): 落格不再强制滚——user 由 sendPrompt 的 pinReplyTop 接管；其余仅 stick 态边沿贴底
+  if (stick && !pinned) scrollBottom(true);
   if (msg.role === 'assistant' || msg.role === 'user') syncAskUserUi();
 }
-function isNearBottom(threshold = 80) {
+function isNearBottom(threshold = 150) {  // V2: 阈值 80→150 对齐手机版 nearBottom
   return msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < threshold;
 }
-function scrollBottom(force) {
+
+/* ═══════════════ V2: 聊天顶置 + 回顶回底（移植 GAndroid v2.32.14 方案，UX_SPEC §V2） ═══════════════ */
+/* ChatGPT 锚定模型：发送时一次定位（用户气泡钉顶 + 回复槽位撑一屏），流式期零程序化滚动；
+   用户任何手势使 _pinSeq 过期 → 本轮程序化滚动永久沉默，阅读位置不被拽回。 */
+let stick = true;                                  // 贴底跟随（消息边沿粒度，流式期不逐拍跟随）
+let pinned = false, _pinEl = null, _lastPin = 0;   // 顶置阅读态：锚 = 本轮 user 消息节点
+let _pinSeq = 0, _pinAct = null;                   // 接管令牌 + RO 重锚快照
+function pinElAtTop() {
+  if (!_pinEl) return false;
+  try {
+    const sr = msgArea.getBoundingClientRect(), er = _pinEl.getBoundingClientRect();
+    return Math.abs(er.top - sr.top) < 80;
+  } catch (_) { return false; }
+}
+function alignTop(el, pad = 6) {  // rect 差量顶对齐，不依赖 offsetParent 链
+  try {
+    const sr = msgArea.getBoundingClientRect(), er = el.getBoundingClientRect();
+    msgArea.scrollTop += (er.top - sr.top) - pad;
+  } catch (_) {}
+}
+/* 一屏槽位（顶置的物理前提）：锚点下内容不足一屏时 alignTop 被 scrollTop 上限钳住；
+   撑满后流式在固定槽位内填充，scrollHeight 不增，屏幕无从移动。 */
+function _pinSlot(el, box) {
+  try {
+    const sr = msgArea.getBoundingClientRect(), er = el.getBoundingClientRect();
+    const need = msgArea.clientHeight - 6 - (msgArea.scrollHeight - (msgArea.scrollTop + (er.top - sr.top)));
+    if (box && need > 0) box.style.minHeight = (box.offsetHeight + need) + 'px';
+  } catch (_) {}
+}
+function pinReplyTop(el, box) {
+  if (!el) return;
+  stick = false; pinned = true; _pinEl = el;
+  const seq = ++_pinSeq;
+  _pinAct = { seq, el, box };
+  const pin = () => { if (seq !== _pinSeq) return; _pinSlot(el, box); alignTop(el); _lastPin = Date.now(); };
+  pin(); requestAnimationFrame(pin);  // 补一帧：首拍异步回流（图片/字体晚到）
+  updateScrollNav();
+}
+function pinBottom() {  // 瞬跳 + rAF 一帧复核（桌面无 content-visibility 异步回流负担，不移植手机版 8 帧）
+  pinned = false; _pinEl = null; _pinSeq++; stick = true;
+  msgArea.scrollTop = msgArea.scrollHeight;
+  requestAnimationFrame(() => { msgArea.scrollTop = msgArea.scrollHeight; });
+}
+const _pinOver = () => { _pinSeq++; };  // 用户接管：滚轮/滚动条按下即作废锚
+msgArea.addEventListener('wheel', _pinOver, { passive: true });
+msgArea.addEventListener('mousedown', (e) => { if (e.offsetX >= msgArea.clientWidth) _pinOver(); });  // 命中滚动条带
+try {
+  new ResizeObserver(() => {  // 视口变化（窗口 resize/侧栏拖宽/composer 伸缩）：seq 活着才补槽重锚
+    const a = _pinAct;
+    if (!a || a.seq !== _pinSeq || !a.el.isConnected) return;
+    _pinSlot(a.el, a.box); alignTop(a.el); _lastPin = Date.now();
+  }).observe(msgArea);
+} catch (_) {}
+
+const snNav = document.getElementById('scroll-nav');
+const snUp = document.getElementById('sn-up'), snDown = document.getElementById('sn-down');
+function updateScrollNav() {  // 双阈值 600px 按位置显隐；离底消失时自动摘 done
+  if (!snNav) return;
+  const up = msgArea.scrollTop > 600;
+  const down = msgArea.scrollHeight - msgArea.clientHeight > 600 && !isNearBottom();
+  snUp.hidden = !up; snDown.hidden = !down;
+  snNav.classList.toggle('on', up || down);
+  if (!down) snDown.classList.remove('done');
+}
+if (snUp) snUp.addEventListener('click', () => { stick = false; pinned = false; _pinEl = null; _pinSeq++; msgArea.scrollTop = 0; });
+if (snDown) snDown.addEventListener('click', () => { snDown.classList.remove('done'); pinBottom(); });
+msgArea.addEventListener('scroll', () => {
+  const nb = isNearBottom();
+  // 仅锚点离开顶带（=用户拖走）且过 800ms 静默期才退出阅读态；短轮次天然 nearBottom 不误伤（手机版同款）
+  if (pinned && Date.now() - _lastPin > 800 && !pinElAtTop()) pinned = false;
+  stick = nb && !pinned;
+  updateScrollNav();
+});
+
+function scrollBottom(force) {  // force 语义对齐手机版 scroll(f)：清顶置态、恢复贴底
+  if (force) { pinned = false; _pinEl = null; _pinSeq++; stick = true; }
   if (force || isNearBottom()) {
     requestAnimationFrame(() => { msgArea.scrollTop = msgArea.scrollHeight; });
   }
@@ -2342,15 +2419,23 @@ function snapDraftRecover(r) {
   return true;
 }
 
-function renderDraft(sess) {
+/* V2(GV0-B2): 回复容器建壳抽出——sendPrompt 发送时刻预建（槽位 box 的物理前提，对齐手机版
+   task.box 时序），renderDraft 首拍经同一分支天然复用不重建。 */
+function ensureDraftShell(sess) {
   const r = rt(sess);
-  if (!isActive(sess)) return;
+  if (!isActive(sess)) return null;
   const box = ensureMsgs();
   if (!r.draftEl || r.draftEl.parentNode !== box) {
     r.draftEl = document.createElement('div'); r.draftEl.className = 'msg assistant'; box.appendChild(r.draftEl);
     bindDraftInteractGuard(r.draftEl, r);
     if (r.taskStartedAt) ensureTaskElapsedBadge(r.draftEl, r.taskStartedAt, null);
   }
+  return r.draftEl;
+}
+function renderDraft(sess) {
+  const r = rt(sess);
+  if (!isActive(sess)) return;
+  if (!ensureDraftShell(sess)) return;
   if (!r.twState) r.twState = { turn: 0, shown: 0, timer: null };
   const tw = r.twState;
   const backendTurn = Math.max(0, Number(r.draftTurn) || 0);
@@ -2439,7 +2524,6 @@ function freezeCurrentTurnDom(r, turn) {
 
 function paintDraft(r, turn, visibleCurrBody) {
   if (!r.draftEl || isDraftInteractFrozen(r)) return;
-  const wasNear = isNearBottom();
   let bubble = r.draftEl.querySelector(':scope > .bubble.md');
   if (!bubble) {
     bubble = document.createElement('div');
@@ -2462,12 +2546,7 @@ function paintDraft(r, turn, visibleCurrBody) {
     cur.insertAdjacentHTML('beforeend', '<span class="cursor"></span>');
   }
   r._draftPaintBody = body;
-
-  if (wasNear) {
-    const inCodeScroll = document.activeElement?.closest?.('.code-block pre, .fold-pre')
-      && r.draftEl.contains(document.activeElement);
-    if (!inCodeScroll) scrollBottom();
-  }
+  // V2(W2): 打字机每拍滚动删除——流式在槽位内填充零移动，贴底跟随由消息边沿（W1/W1b）承接
 }
 
 function flushTypewriter(sess) {
@@ -2573,6 +2652,16 @@ function setBusy(sess, busy, opts = {}) {
      → 写未读完成标记 + 可点 toast。错误路径 fromError 豁免：断连/失败不是完成（GU0-B1/S1'）。 */
   if (wasBusy && !busy && !opts.fromError && !(isActive(sess) && currentPage === 'chat')) {
     markUnseenDone(sess, r.taskStartedAt ? (r.taskEndedAt || Date.now()) - r.taskStartedAt : null);
+  }
+  /* V2(§V2.4): 活跃会话在聊天页收尾且用户顶置阅读中——不抢滚，点亮回底钮（手机版 onTaskDone 三连同款：
+     done 类 + 强制显形 + 容器亮，不依赖 600px 显隐规则）；点击回底/自然贴底(updateScrollNav !down)摘除。 */
+  if (wasBusy && !busy && !opts.fromError && isActive(sess) && currentPage === 'chat' && pinned && snDown) {
+    snDown.classList.add('done'); snDown.hidden = false; snNav?.classList.add('on');
+  }
+  /* V2: 空壳清理——发送时预建的回复容器若到任务结束仍无内容（秒败/无流式），移除防残留空气泡。
+     正常流式转正路径此时 draftEl 已置 null，不受影响。 */
+  if (wasBusy && !busy && r.draftEl && !r.draftEl.querySelector('.bubble') && !(r.draftSegs && r.draftSegs.length)) {
+    r.draftEl.remove(); r.draftEl = null;
   }
   if (!isActive(sess)) return;
   if (busy) {
@@ -3185,6 +3274,9 @@ function upsert(sess, raw, partial) {
     r.draftEl = null; r.draftSegs = null; r.draftTurn = 0; r.streamTurn = 0;
     sess.messages.push(m);
     refreshEmptyState(sess);
+    // V2(W1b/GV0 复审): 流式 draft 原位转正是最高频 assistant 落格路径（return 早退不经 appendMessage），
+    // 边沿贴底必须覆盖此处（对齐手机版同位置 scroll() 调用）
+    if (stick && !pinned) scrollBottom(true);
     if (m.role === 'assistant' || m.role === 'user') syncAskUserUi();
     saveSessions();
     return;
@@ -3443,6 +3535,15 @@ async function sendPrompt(text) {
   // 之后只接受用户手动 rename。
   saveSessions();
   setBusy(sess, true);
+  /* V2: 发送即钉顶——预建回复空壳作槽位 box（GV0-B2；置于 setBusy 后使 taskStartedAt 就绪、badge 可挂），
+     user 气泡 alignTop 顶置，流式在槽位内填充零移动。非聊天页发送（快捷路径）不钉。 */
+  if (isActive(sess) && currentPage === 'chat') {
+    // 上一轮槽位 minHeight 到此才清（任务结束时收槽会抽走阅读者脚下的地毯，故延迟到下轮发送重算）
+    if (msgsEl) msgsEl.querySelectorAll(':scope > .msg[style*="min-height"]').forEach(n => { n.style.minHeight = ''; });
+    const userEl = msgsEl ? msgsEl.lastElementChild : null;
+    const shell = ensureDraftShell(sess);
+    if (userEl && shell) pinReplyTop(userEl, shell);
+  }
   try {
     let sid = await ensureBridgeSession(sess);
     try {

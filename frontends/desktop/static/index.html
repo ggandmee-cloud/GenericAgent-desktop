@@ -133,6 +133,15 @@
               <span data-i18n="chat.interrupting"></span>
             </div>
           </div>
+          <!-- V2: 回顶回底浮钮（msg-area 兄弟节点，随内容滚动不走样；显隐由 updateScrollNav 驱动） -->
+          <div class="scroll-nav" id="scroll-nav">
+            <button type="button" class="sn-btn" id="sn-up" hidden data-i18n-title="sn.top" aria-label="back to top">
+              <span class="sn-flip" data-ga-icon="caretDown"></span>
+            </button>
+            <button type="button" class="sn-btn" id="sn-down" hidden data-i18n-title="sn.bottom" aria-label="back to bottom">
+              <span data-ga-icon="caretDown"></span>
+            </button>
+          </div>
           <div class="composer-anchor" id="chat-composer-anchor">
             <div class="composer" id="chat-composer" data-composer-ctx="chat">
             <div class="composer-slot">
