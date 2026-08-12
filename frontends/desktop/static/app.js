@@ -2775,6 +2775,7 @@ function markUnseenDone(sess, elapsedMs) {
   saveUnseenDone();
   renderSessionList();
   showToast(t('conv.doneToast', { title: displayTitle(sess) }), {
+    kind: 'done',  // W2.3: 完成通知带状态 icon
     onClick: () => {
       setActiveSession(sess.id);
       const chatNav = nav.querySelector('.nav-item[data-page="chat"]');
@@ -2803,7 +2804,12 @@ function renderSessionList() {
   const filtered = query
     ? all.filter(s => {
         const title = displayTitle(s).toLowerCase();
-        const hasMsg = s.messages && s.messages.some(m => (m.text || '').toLowerCase().includes(query));
+        // W2 顺手修存量死代码: 原读 m.text 而消息 schema 是 content/turn_segs——正文命中从未生效
+        const hasMsg = s.messages && s.messages.some(m => {
+          const body = typeof m.content === 'string' ? m.content
+            : (Array.isArray(m.turn_segs) ? m.turn_segs.join('\n') : '');
+          return body.toLowerCase().includes(query);
+        });
         return title.includes(query) || hasMsg;
       })
     : all;
@@ -2820,8 +2826,13 @@ function renderSessionList() {
   _convListSig = sig;
   convListEl.innerHTML = '';
   if (rows.length === 0) {
+    /* W2.4: 空态配手绘线条 icon（搜索空=放大镜 / 列表空=对话气泡），文案不变 */
+    const icon = query
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8.5" y1="11" x2="13.5" y2="11"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
     const e = document.createElement('div');
-    e.className = 'conv-empty'; e.textContent = t(query ? 'conv.emptySearch' : 'conv.emptyList');
+    e.className = 'conv-empty';
+    e.innerHTML = `<span class="ce-ic">${icon}</span><span>${escapeHtml(t(query ? 'conv.emptySearch' : 'conv.emptyList'))}</span>`;
     convListEl.appendChild(e); syncConvTicker(); syncChatHead(); renderRecentStrip(); return;
   }
   let lastG = null;
@@ -2835,6 +2846,25 @@ function renderSessionList() {
     }
     const showUnseen = unseen && !busy;
     const title = displayTitle(sess);
+    /* W2.2: 搜索命中高亮——原文域 indexOf 定位命中区间（与过滤条件同 includes 口径），逐段 escapeHtml 后拼接：
+       转义先于插入 DOM（红线意图=防 XSS 达成）；相对契约字面「转义后字符串上匹配」为申报偏差——
+       字面实现会让 query=amp/lt 等误命中实体内部（&amp; 的 amp）破坏实体显示 */
+    let titleHtml;
+    if (query) {
+      const lower = title.toLowerCase();
+      const parts = [];
+      let i = 0;
+      for (;;) {
+        const j = lower.indexOf(query, i);
+        if (j === -1) { parts.push(escapeHtml(title.slice(i))); break; }
+        parts.push(escapeHtml(title.slice(i, j)));
+        parts.push(`<mark class="hl">${escapeHtml(title.slice(j, j + query.length))}</mark>`);
+        i = j + query.length;
+      }
+      titleHtml = parts.join('');
+    } else {
+      titleHtml = escapeHtml(title);
+    }
     const meta = convMetaText(sess);
     const item = document.createElement('div');
     item.className = 'conv-item' + (currentPage === 'chat' && sess.id === state.activeId ? ' active' : '') + (busy ? ' busy' : '') + (showUnseen ? ' unseen' : '');
@@ -2848,7 +2878,7 @@ function renderSessionList() {
     item.innerHTML =
       (busy ? '<span class="ci-dot"></span>' : '') +
       `<div class="ci-main">` +
-      `<div class="ci-title">${pinSvg}${escapeHtml(title)}</div>` +
+      `<div class="ci-title">${pinSvg}${titleHtml}</div>` +
       `<div class="ci-meta${showUnseen ? ' done' : ''}">${escapeHtml(meta)}</div></div>` +
       (showUnseen ? '<span class="ci-unseen" aria-hidden="true"></span>' : '') +
       `<button class="ci-more" data-no-tooltip aria-label="${escapeHtml(t('common.more'))}">${GA_ICON('dotsThreeVertical')}</button>`;
@@ -3757,21 +3787,51 @@ function showError(text) {
 let _toastTimer = null;
 /* U3: 扩展可点击 toast（UX_SPEC §4）。单例元素复用——onclick 用赋值式覆盖，
    禁 addEventListener 叠加（GU0-S5）；不传 onClick 时与旧行为完全一致（1.8s 自动消失）。 */
+/* W2.3 toast 结构件图标（内联线条 SVG；styles.css 之外不受 token 断言约束） */
+const SVG_TOAST_DONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const SVG_TOAST_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+const SVG_TOAST_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 function showToast(text, opts = {}) {
+  if (typeof opts !== 'object' || opts === null) opts = {};  // 兼容历史第二参为字符串的调用（charLimit 'warn'）
   let el = document.getElementById('ga-toast');
   if (!el) { el = document.createElement('div'); el.id = 'ga-toast'; el.className = 'ga-toast'; document.body.appendChild(el); }
-  el.textContent = text;
   const clickable = typeof opts.onClick === 'function';
-  // 隐藏时必须同步摘 clickable+onclick：.clickable 的 pointer-events:auto 不随 .show 消失，
-  // 残留会在顶部留下隐形热区触发旧跳转（GU3-B1）
+  /* W2.3: 结构件随每次 show 整体重建（icon/文本/chevron/×），文本走 textContent 防注入 */
+  el.innerHTML = '';
+  if (opts.kind === 'done') {
+    const ic = document.createElement('span');
+    ic.className = 'toast-ic';
+    ic.innerHTML = SVG_TOAST_DONE;
+    el.appendChild(ic);
+  }
+  const txt = document.createElement('span');
+  txt.className = 'toast-text';
+  txt.textContent = text;
+  el.appendChild(txt);
+  if (clickable) {
+    const ch = document.createElement('span');
+    ch.className = 'toast-chevron';
+    ch.innerHTML = SVG_TOAST_CHEVRON;
+    el.appendChild(ch);
+  }
+  const x = document.createElement('button');
+  x.type = 'button';
+  x.className = 'toast-x';
+  x.setAttribute('aria-label', t('common.close'));
+  x.innerHTML = SVG_TOAST_X;
+  el.appendChild(x);
+  /* 四清（GU3-B1 扩展，GW0-B2）：show/clickable 类 + 宿主 onclick + 定时器 + × 失能。
+     × 命中面另有 CSS 门控（.show 生灭）双保险——pointer-events 继承性下自带 auto 的子钮必须两头闭环 */
   const dismiss = () => {
+    clearTimeout(_toastTimer);
     el.classList.remove('show');
     el.classList.remove('clickable');
     el.onclick = null;
+    x.onclick = null;
   };
+  x.onclick = (e) => { e.stopPropagation(); dismiss(); };
   el.classList.toggle('clickable', clickable);
   el.onclick = clickable ? () => {
-    clearTimeout(_toastTimer);
     dismiss();
     opts.onClick();
   } : null;

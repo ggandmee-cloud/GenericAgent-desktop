@@ -3,15 +3,19 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* —— 全局滚动条 —— */
+/* —— 全局滚动条（W2.4: thumb 提一档可见性; hover 再深一档） —— */
 ::-webkit-scrollbar{ width:6px; height:6px; }
 ::-webkit-scrollbar-track{ background:transparent; }
 ::-webkit-scrollbar-thumb{
-  background:var(--line);
+  background:var(--line-strong);
   border-radius:var(--r-full);
 }
-::-webkit-scrollbar-thumb:hover{ background:var(--line-strong); }
+::-webkit-scrollbar-thumb:hover{ background:var(--muted2); }
 ::-webkit-scrollbar-corner{ background:transparent; }
+/* W2.4: 代码块内滚动条例外加宽（横向拖拽目标） */
+.code-block pre::-webkit-scrollbar{ width:8px; height:8px; }
+/* W2.4: 全局选区着色（accent 浅底不改字色） */
+::selection{ background:var(--accent-soft); }
 
 /* ═ TOKEN LAYER START ═
    单一真相源 — GA 设计语言(值 1:1 取自 GAndroid webui app.css)。
@@ -350,11 +354,29 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 .ga-toast{
   position:fixed; left:50%; top:72px; transform:translateX(-50%) translateY(-8px);
   background:var(--card); color:var(--txt); border:1px solid var(--line-strong);
-  border-radius:var(--r-md); padding:10px 18px; font-size:13px; font-family:var(--font-sans);
+  border-radius:var(--r-md); padding:10px 14px 10px 16px; font-size:13px; font-family:var(--font-sans);
   box-shadow:var(--elev-2); opacity:0; pointer-events:none;
   transition:opacity .18s, transform .18s; z-index:9999;
+  display:flex; align-items:center; gap:8px; max-width:min(560px, 80vw);
 }
 .ga-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+/* W2.3: toast 结构件——状态 icon / 可点箭头暗示 / 关闭钮 */
+.ga-toast .toast-ic{ display:inline-flex; flex:0 0 auto; color:var(--ok); }
+.ga-toast .toast-ic svg{ width:15px; height:15px; }
+.ga-toast .toast-text{ min-width:0; }
+.ga-toast .toast-chevron{ display:inline-flex; flex:0 0 auto; color:var(--muted2); }
+.ga-toast .toast-chevron svg{ width:13px; height:13px; }
+.ga-toast .toast-x{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:16px; height:16px; flex:0 0 auto; margin-left:2px;
+  border:none; background:transparent; padding:0; border-radius:var(--r-full);
+  color:var(--muted2); cursor:pointer;
+  /* GW0-B2: 命中面随 .show 生灭——pointer-events 继承性下 × 须自带门控，防 dismiss 后幽灵热区 */
+  pointer-events:none;
+}
+.ga-toast.show .toast-x{ pointer-events:auto; }
+.ga-toast .toast-x:hover{ color:var(--txt); background:var(--surface3); }
+.ga-toast .toast-x svg{ width:12px; height:12px; }
 /* U3: 可点击 toast（完成提示直达会话） */
 .ga-toast.clickable{ pointer-events:auto; cursor:pointer; }
 .ga-toast.clickable:hover{ border-color:var(--accent); }
@@ -460,6 +482,8 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   box-sizing:border-box;
   transition:width .2s, padding .2s, opacity .15s;
 }
+/* W2.4: 深色下 divider 近不可辨，右缘 hairline 提一档（浅色面差已够不加） */
+html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
 /* V1: 侧栏顶行 = 折叠钮 + 新对话主按钮（顶部品牌标识区删除，Boss 2026-08-12 拍板保持清爽） */
 .sb-top{
   display:flex; align-items:center; gap:6px;
@@ -474,7 +498,7 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   transition:opacity .15s, color .15s, background .15s;
 }
 .sb-icon-btn:hover{ opacity:1; color:var(--txt); background:var(--surface3); }
-.sb-icon-btn svg{ width:16px; height:16px; transition:transform .2s; }
+.sb-icon-btn svg{ width:18px; height:18px; transition:transform .2s; }  /* W2.1: 图标 16→18 提高辨识 */
 /* 折叠态常驻展开钮：fixed 左上，仅折叠时可见（低于 modal/menu 层） */
 .sb-expand-fab{
   position:fixed; top:12px; left:12px; z-index:40;
@@ -514,12 +538,15 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 .nav-item.active .beta{ background:var(--card); }
 
 .chev{ width:14px; height:14px; color:var(--muted2); flex:0 0 auto; }
-/* V1: 侧栏底部服务状态行（原聊天页顶栏 #run-toggle 迁入；.run-state 四态类照常作用） */
+/* V1: 侧栏底部服务状态行（原聊天页顶栏 #run-toggle 迁入；.run-state 四态类照常作用）
+   W2.1: 卡片化——浅面胶囊（.sb-status 与 .run-state 同元素，直接覆写） */
 .sidebar .sb-status{
-  margin-top:6px; padding:8px 10px 2px;
-  border-top:1px solid var(--divider);
+  margin-top:6px; padding:6px 10px;
   justify-content:flex-start; cursor:default;
   height:auto; max-height:none;
+  background:var(--surface2);
+  border:1px solid var(--line);
+  border-radius:var(--r-full);
 }
 
 /* V1: 指挥家页连接状态条（原顶栏状态灯+重试钮迁入内容区顶部） */
@@ -789,10 +816,10 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   border-radius:var(--r-xl);
   background:var(--card);
 }
-/* 聊天页覆盖层特异度(0,3,0)会盖掉 base 焦点描边, 必须同步声明(GR3-B1) */
+/* 聊天页覆盖层特异度(0,3,0)会盖掉 base 焦点描边, 必须同步声明(GR3-B1)；W2.4 焦点环加强 */
 .page.page--chat-ui .composer-inset:focus-within{
-  border-color:color-mix(in srgb, var(--acc) 30%, var(--line));
-  box-shadow:0 0 0 4px var(--ring);
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-soft);
 }
 .page.page--chat-ui .msgs{
   width:100%;
@@ -1276,8 +1303,8 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   grid-template-columns:1fr;
 }
 .composer-inset:focus-within{
-  border-color:color-mix(in srgb, var(--acc) 30%, var(--line));
-  box-shadow:0 0 0 4px var(--ring);
+  border-color:var(--accent);  /* W2.4: 焦点环加强——浅色下原 30% mix 几乎不可辨 */
+  box-shadow:0 0 0 3px var(--accent-soft);
 }
 .composer-inset .thumb-strip{ padding:8px 12px 0; }
 .composer-inset.is-inline{
@@ -1404,14 +1431,22 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   -ms-overflow-style:none;
 }
 .conv-list::-webkit-scrollbar{ display:none; width:0; height:0; }
-.conv-empty{ color:var(--muted2); font-size:12px; padding:8px 10px; }
+.conv-empty{
+  color:var(--muted2); font-size:12px; padding:14px 10px;
+  display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center;
+}
+/* W2.4: 空态手绘线条 icon（GA 图标语言, stroke 1.5） */
+.ce-ic{ display:inline-flex; color:var(--muted2); opacity:.55; }
+.ce-ic svg{ width:40px; height:40px; }
+.collab-progress-empty .ce-ic svg{ width:28px; height:28px; }
+.collab-progress-empty{ display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; }
 /* U2: 日期分组头（置顶/今天/昨天/近7天/更早），纯装饰性文本 */
 .conv-group{
   font-size:11px; font-weight:500; color:var(--muted2);
-  padding:12px 10px 3px; user-select:none; flex:0 0 auto;
+  padding:10px 10px 3px; user-select:none; flex:0 0 auto;  /* W2.1: 组头上间距随行密度同步收紧 */
 }
 .conv-group:first-child{ padding-top:4px; }
-.conv-item{ display:flex; align-items:flex-start; gap:9px; padding:9px 10px; border-radius:var(--r-xs); cursor:pointer; transition:background .15s; flex:0 0 auto; }
+.conv-item{ display:flex; align-items:flex-start; gap:9px; padding:8px 10px; border-radius:var(--r-xs); cursor:pointer; transition:background .15s; flex:0 0 auto; }  /* W2.1: 密度收紧 9→8 */
 .conv-item:hover{ background:var(--surface3); }
 .conv-item:focus-visible{ outline:2px solid var(--acc); outline-offset:-2px; }
 .conv-item.active{ background:var(--surface3); box-shadow:inset 2px 0 0 var(--acc); }
@@ -1445,7 +1480,9 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
 }
 .ci-rename-input::selection{ background:color-mix(in srgb, var(--accent) 28%, transparent); }
 .ci-pin{ width:14px; height:14px; color:var(--accent); margin-right:3px; vertical-align:-3px; flex:0 0 auto; display:inline-block; }
-.ci-meta{ font-size:11px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums; }
+.ci-meta{ font-size:11.5px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums; }  /* W2.1 */
+/* W2.2: 搜索命中高亮（accent 浅底不改字色；行内小元素不吃几何刻度，圆角随字号免弧） */
+.ci-title mark.hl{ background:var(--accent-soft); color:inherit; padding:0 1px; }
 /* U3: 未读完成——accent 小圆徽 + meta 完成色（打开该会话即清，一次性） */
 .ci-meta.done{ color:var(--accent); }
 .ci-unseen{

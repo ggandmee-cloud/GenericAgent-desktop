@@ -285,7 +285,11 @@
                   </button>
                 </div>
                 <div class="collab-prog-stats" id="collab-progress-stats" hidden></div>
-                <div class="collab-progress-empty" id="collab-progress-empty" data-i18n="collab.progressEmpty"></div>
+                <!-- W2.4: 空态 icon 与文案分节点（data-i18n 的 textContent 覆写会吃掉子元素，须内层挂键） -->
+                <div class="collab-progress-empty" id="collab-progress-empty">
+                  <span class="ce-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+                  <span data-i18n="collab.progressEmpty"></span>
+                </div>
                 <div id="collab-workers"></div>
               </aside>
             </div>
