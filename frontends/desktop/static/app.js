@@ -1569,6 +1569,12 @@ async function loadSessions() {
     // 会话则置空 → 显示「新会话」空态，由用户自己点选。
     const savedActive = localStorage.getItem('ga_active');
     state.activeId = (savedActive && state.sessions.has(savedActive)) ? savedActive : null;
+    // U3: 清未读完成标记里的孤儿 id（会话已在别处被删）
+    let pruned = false;
+    for (const id of Object.keys(unseenDone)) {
+      if (!state.sessions.has(id)) { delete unseenDone[id]; pruned = true; }
+    }
+    if (pruned) saveUnseenDone();
   } catch (_) {}
 }
 
@@ -2580,11 +2586,17 @@ function stopTaskTimer(sess) {
   r.taskEndedAt = Date.now();
 }
 
-function setBusy(sess, busy) {
+function setBusy(sess, busy, opts = {}) {
   const r = rt(sess);
+  const wasBusy = !!r.busy;  // U3: 赋值前快照，判定真转换（UX_SPEC §4 / GU0-S1）
   if (r.busy && !busy) resetTypewriterState(r);
   r.busy = busy;
   if (busy) startTaskTimer(sess); else stopTaskTimer(sess);
+  /* U3: busy 真转换→false、非错误路径、且用户看不见（非活跃会话或人不在聊天页）
+     → 写未读完成标记 + 可点 toast。错误路径 fromError 豁免：断连/失败不是完成（GU0-B1/S1'）。 */
+  if (wasBusy && !busy && !opts.fromError && !(isActive(sess) && currentPage === 'chat')) {
+    markUnseenDone(sess, r.taskStartedAt ? (r.taskEndedAt || Date.now()) - r.taskStartedAt : null);
+  }
   if (!isActive(sess)) return;
   if (busy) {
     chatStatus.setBusy(formatTaskElapsed(Date.now() - (r.taskStartedAt || Date.now())));
@@ -2660,10 +2672,41 @@ function convGroupKey(sess, nowMs) {
   if (ts >= new Date(n.getFullYear(), n.getMonth(), n.getDate() - 6).getTime()) return 'Week';
   return 'Earlier';
 }
-// 行 meta 状态机（UX_SPEC §3）：运行中 · mm:ss ＞ 空闲相对时间（U3 在中间插「已完成」态）
+/* U3: 未读完成标记（UX_SPEC §4）——纯前端本地持久化，桥接零变更。
+   键 ga_unseen_done_v1 = { [sessionId]: { ts, elapsedMs } }，上限 200 条按 ts 淘汰最旧。 */
+const UNSEEN_DONE_KEY = 'ga_unseen_done_v1';
+let unseenDone = {};
+try { unseenDone = JSON.parse(localStorage.getItem(UNSEEN_DONE_KEY) || '{}') || {}; } catch (_) { unseenDone = {}; }
+function saveUnseenDone() {
+  const ids = Object.keys(unseenDone);
+  if (ids.length > 200) {
+    ids.sort((a, b) => (unseenDone[a]?.ts || 0) - (unseenDone[b]?.ts || 0));
+    for (const id of ids.slice(0, ids.length - 200)) delete unseenDone[id];
+  }
+  try { localStorage.setItem(UNSEEN_DONE_KEY, JSON.stringify(unseenDone)); } catch (_) {}
+}
+function markUnseenDone(sess, elapsedMs) {
+  unseenDone[sess.id] = { ts: Date.now(), elapsedMs: Number.isFinite(elapsedMs) ? elapsedMs : null };
+  saveUnseenDone();
+  renderSessionList();
+  showToast(t('conv.doneToast', { title: displayTitle(sess) }), {
+    onClick: () => {
+      setActiveSession(sess.id);
+      const chatNav = nav.querySelector('.nav-item[data-page="chat"]');
+      if (chatNav && !chatNav.classList.contains('active')) chatNav.click();
+    }
+  });
+}
+// 清除不重画：三处调用方（setActiveSession/closeSession/loadSessions）各自随后 render
+function clearUnseenDone(id) {
+  if (unseenDone[id]) { delete unseenDone[id]; saveUnseenDone(); }
+}
+// 行 meta 状态机（UX_SPEC §3/§4）：运行中 · 时长 ＞ 已完成 · 用时 ＞ 空闲相对时间
 function convMetaText(sess) {
   const r = state.runtime.get(sess.id);
   if (r && r.busy) return t('conv.runningFor', { t: r.taskStartedAt ? formatDur(Date.now() - r.taskStartedAt) : '…' });
+  const u = unseenDone[sess.id];
+  if (u) return t('conv.doneMeta', { t: u.elapsedMs != null ? formatDur(u.elapsedMs) : '—' });
   return relTime(normTs(sess.lastActiveTs));
 }
 let _convListSig = '';
@@ -2682,12 +2725,12 @@ function renderSessionList() {
   const now = Date.now();
   const rows = filtered.map(s => {
     const r = state.runtime.get(s.id);
-    return { s, busy: !!(r && r.busy), g: query ? '' : convGroupKey(s, now) };
+    return { s, busy: !!(r && r.busy), unseen: !!unseenDone[s.id], g: query ? '' : convGroupKey(s, now) };
   });
-  /* 防抖签名（UX_SPEC §3）：只含结构性状态，时间文本由 ticker 原位刷新（分钟桶捕捉数据变更）。
+  /* 防抖签名（UX_SPEC §3，GU2-S2 补 unseen 位）：只含结构性状态，时间文本由 ticker 原位刷新。
      签名不变直接跳过 —— 消掉 poll 每拍的 innerHTML 全量重建（评审 D8）。 */
   const sig = JSON.stringify([query, state.activeId, currentPage === 'chat',
-    rows.map(x => [x.s.id, !!x.s.pinned, x.busy, displayTitle(x.s), x.g, Math.floor(normTs(x.s.lastActiveTs) / 60e3)])]);
+    rows.map(x => [x.s.id, !!x.s.pinned, x.busy, x.unseen, displayTitle(x.s), x.g, Math.floor(normTs(x.s.lastActiveTs) / 60e3)])]);
   if (sig === _convListSig) { syncConvTicker(); return; }
   _convListSig = sig;
   convListEl.innerHTML = '';
@@ -2697,7 +2740,7 @@ function renderSessionList() {
     convListEl.appendChild(e); syncConvTicker(); return;
   }
   let lastG = null;
-  for (const { s: sess, busy, g } of rows) {
+  for (const { s: sess, busy, unseen, g } of rows) {
     if (g && g !== lastG) {
       const h = document.createElement('div');
       h.className = 'conv-group';
@@ -2705,15 +2748,17 @@ function renderSessionList() {
       convListEl.appendChild(h);
       lastG = g;
     }
+    const showUnseen = unseen && !busy;
     const item = document.createElement('div');
-    item.className = 'conv-item' + (currentPage === 'chat' && sess.id === state.activeId ? ' active' : '') + (busy ? ' busy' : '');
+    item.className = 'conv-item' + (currentPage === 'chat' && sess.id === state.activeId ? ' active' : '') + (busy ? ' busy' : '') + (showUnseen ? ' unseen' : '');
     item.dataset.id = sess.id;
     const pinSvg = sess.pinned ? GA_ICON('pushPinSimple', 'ci-pin') : '';
     item.innerHTML =
       (busy ? '<span class="ci-dot"></span>' : '') +
       `<div class="ci-main">` +
       `<div class="ci-title">${pinSvg}${escapeHtml(displayTitle(sess))}</div>` +
-      `<div class="ci-meta">${escapeHtml(convMetaText(sess))}</div></div>` +
+      `<div class="ci-meta${showUnseen ? ' done' : ''}">${escapeHtml(convMetaText(sess))}</div></div>` +
+      (showUnseen ? '<span class="ci-unseen" aria-hidden="true"></span>' : '') +
       `<button class="ci-more" data-no-tooltip aria-label="${escapeHtml(t('common.more'))}">${GA_ICON('dotsThreeVertical')}</button>`;
     convListEl.appendChild(item);
   }
@@ -2815,6 +2860,7 @@ function setActiveSession(id) {
   setSessionLoading(false);
   state.activeId = id;
   if (id) localStorage.setItem('ga_active', id);  // 持久化当前会话，刷新后固定恢复它
+  clearUnseenDone(id);  // U3: 打开即清未读完成标记（一次性），随后的 renderSessionList 消徽标
   const sess = state.sessions.get(id);
   if (!sess) return;
   // 切会话:回显该会话绑定的模型(后端权威)。未绑定(null)则保持当前全局默认显示。
@@ -2851,6 +2897,7 @@ async function closeSession(id) {
     fetch(`${BRIDGE_ORIGIN}/session/${sess.bridgeSessionId}`, { method: 'DELETE' }).catch(() => {});
   }
   state.sessions.delete(id); state.runtime.delete(id);
+  clearUnseenDone(id);  // U3: 删会话同步清未读标记
   if (state.activeId === id) {
     const next = (sortedSessions()[0] || {}).id || null;  // 切到列表最靠上的会话
     if (next) setActiveSession(next);
@@ -3168,7 +3215,7 @@ async function hydrateSession(sess) {
     if (busy && !rt(sess).polling) pollSession(sess);
   } catch (e) {
     showError(t('err.poll') + ': ' + (e.message || e));
-    setBusy(sess, false);
+    setBusy(sess, false, { fromError: true });  // U3: 错误路径不算完成，豁免未读标记(GU0-B1)
   } finally {
     if (isActive(sess)) {
       restoreElapsedBadges(sess, ensureMsgs());
@@ -3220,7 +3267,7 @@ async function pollSession(sess) {
     } while (true);
   } catch (e) {
     showError(t('err.poll') + ': ' + (e.message || e));
-    setBusy(sess, false);
+    setBusy(sess, false, { fromError: true });  // U3: poll 连败≠完成，豁免未读标记(GU0-B1)
   } finally {
     r.polling = false; renderSessionList();
     // 历史消息已全部加载，恢复已完成任务的耗时 badge
@@ -3374,7 +3421,7 @@ async function sendPrompt(text) {
   } catch (e) {
     const em = { role: 'error', content: e.message || String(e) };
     sess.messages.push(em); appendMessage(sess, em);
-    setBusy(sess, false);
+    setBusy(sess, false, { fromError: true });  // U3: 发送失败≠完成，豁免未读标记(GU0-S1')
     return false;
   }
 }
@@ -3439,13 +3486,23 @@ function showError(text) {
   else console.error(text);
 }
 let _toastTimer = null;
-function showToast(text) {
+/* U3: 扩展可点击 toast（UX_SPEC §4）。单例元素复用——onclick 用赋值式覆盖，
+   禁 addEventListener 叠加（GU0-S5）；不传 onClick 时与旧行为完全一致（1.8s 自动消失）。 */
+function showToast(text, opts = {}) {
   let el = document.getElementById('ga-toast');
   if (!el) { el = document.createElement('div'); el.id = 'ga-toast'; el.className = 'ga-toast'; document.body.appendChild(el); }
   el.textContent = text;
+  const clickable = typeof opts.onClick === 'function';
+  el.classList.toggle('clickable', clickable);
+  el.onclick = clickable ? () => {
+    clearTimeout(_toastTimer);
+    el.classList.remove('show');
+    el.onclick = null;
+    opts.onClick();
+  } : null;
   el.classList.add('show');
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), clickable ? 5000 : 1800);
 }
 
 let tooltipEl = null;

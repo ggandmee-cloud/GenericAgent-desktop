@@ -355,6 +355,9 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   transition:opacity .18s, transform .18s; z-index:9999;
 }
 .ga-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+/* U3: 可点击 toast（完成提示直达会话） */
+.ga-toast.clickable{ pointer-events:auto; cursor:pointer; }
+.ga-toast.clickable:hover{ border-color:var(--accent); }
 .ga-tooltip{
   position:fixed; z-index:10000; max-width:min(320px, calc(100vw - 16px));
   padding:6px 8px; border:1px solid var(--tooltip-border); border-radius:var(--r-xs);
@@ -1408,6 +1411,13 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
 .ci-rename-input::selection{ background:color-mix(in srgb, var(--accent) 28%, transparent); }
 .ci-pin{ width:14px; height:14px; color:var(--accent); margin-right:3px; vertical-align:-3px; flex:0 0 auto; display:inline-block; }
 .ci-meta{ font-size:11px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums; }
+/* U3: 未读完成——accent 小圆徽 + meta 完成色（打开该会话即清，一次性） */
+.ci-meta.done{ color:var(--accent); }
+.ci-unseen{
+  width:8px; height:8px; border-radius:50%; background:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-soft);
+  flex:0 0 auto; margin-top:8px;
+}
 .ci-more{
   flex:0 0 auto; width:26px; height:26px; border:none; background:transparent;
   color:var(--txt-3); border-radius:var(--r-full); cursor:pointer;
