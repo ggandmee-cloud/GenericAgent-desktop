@@ -13,181 +13,127 @@
 ::-webkit-scrollbar-thumb:hover{ background:var(--line-strong); }
 ::-webkit-scrollbar-corner{ background:transparent; }
 
+/* ═ TOKEN LAYER START ═
+   单一真相源 — GA 设计语言(值 1:1 取自 GAndroid webui app.css)。
+   规范: gamobile/DESIGN_SPEC_GA_DESKTOP.md · 映射: gamobile/TOKEN_MAP_GA_DESKTOP.md
+   结构: ①字体/布局 ②M3 主令牌(浅) ③几何/深度/代码 ④语义短名 ⑤旧名别名层(过渡, R2–R4 逐段收编) ⑥样本色板 ⑦深色入口 */
 :root{
-  --font-sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI Variable","Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",emoji;
+  color-scheme:light;
+  /* —— ① 字体与布局 —— */
+  --font-sans:'GAQuote',-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable","Segoe UI","HarmonyOS Sans","MiSans","PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei",Roboto,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",emoji;
   --font-brand:"GA Azonix",var(--font-sans);
   --font-mono:"GA JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Monaco,Consolas,"Liberation Mono","Courier New","PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei",monospace;
   --font-num:var(--font-mono);
   --font-num-variant:lining-nums tabular-nums;
   --chat-col-w:760px;
-  /* —— 基础面 —— */
-  --bg-base:#f4f5f7;
-  --bg:var(--bg-base);
-  --panel:#ffffff;
-  --card:#ffffff;
-  --field-bg:#fafbfc;
-  --line-base:#e9eaee;
-  --line:var(--line-base);
-  --line-soft-base:#f0f1f4;
+
+  /* —— ② Material 3 主令牌(浅色): 墨黑单色 + 暖中性灰, 纯白主屏, 发丝分层 —— */
+  --md-sys-color-primary:#1d1d1f; --md-sys-color-on-primary:#ffffff;
+  --md-sys-color-primary-container:#e8e8ed; --md-sys-color-on-primary-container:#1d1d1f;
+  --md-sys-color-secondary-container:#1d1d1f; --md-sys-color-on-secondary-container:#ffffff;
+  --md-sys-color-surface:#ffffff; --md-sys-color-surface-container-lowest:#ffffff;
+  --md-sys-color-surface-container-low:#fbfbfd; --md-sys-color-surface-container:#f2f2f4;
+  --md-sys-color-surface-container-high:#ededf0; --md-sys-color-surface-container-highest:#e6e6ea;
+  --md-sys-color-on-surface:#1d1d1f; --md-sys-color-on-surface-variant:#6e6e73;
+  --md-sys-color-outline:#b8b8bd; --md-sys-color-outline-variant:#e6e6ea;
+  --md-sys-color-error:#d70015; --md-sys-color-error-container:#fdeded; --md-sys-color-on-error-container:#a3000f;
+  --md-sys-color-success:#2ba24e; --md-sys-color-warn:#b25e00;
+
+  /* —— ③ 几何 / 深度 / 代码 / 动效曲线 —— */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+  --r-2xs:7px; --r-xs:10px; --r-sm:14px; --r-md:18px; --r-lg:22px; --r-xl:28px; --r-full:999px;
+  --elev-1:0 1px 2px rgba(0,0,0,.04); --elev-2:0 8px 30px rgba(0,0,0,.08);
+  --elev-sheet:0 -8px 40px rgba(0,0,0,.16);
+  --ring:rgba(0,0,0,.06);
+  --code-bg:#f5f5f7; --code-fg:#1d1d1f; --code-head:rgba(0,0,0,.035);
+  --ease-slide:cubic-bezier(.32,.72,0,1); --ease-in-soft:cubic-bezier(.2,.7,.25,1);
+
+  /* —— ④ 语义短名(组件层实际引用) —— */
+  --bg:var(--md-sys-color-surface); --surface:var(--md-sys-color-surface-container-lowest);
+  --surface2:var(--md-sys-color-surface-container-high); --surface3:var(--md-sys-color-surface-container);
+  --txt:var(--md-sys-color-on-surface); --txt2:var(--md-sys-color-on-surface-variant);
+  --mut:var(--md-sys-color-outline); --icon:var(--md-sys-color-on-surface-variant);
+  --line:var(--md-sys-color-outline-variant);
+  --acc:var(--md-sys-color-primary); --onAcc:var(--md-sys-color-on-primary); --acc2:#48484a;
+  --accSoft:var(--md-sys-color-primary-container); --accTxt:var(--md-sys-color-on-primary-container);
+  --uBubble:var(--md-sys-color-secondary-container); --uTxt:var(--md-sys-color-on-secondary-container);
+  --err:var(--md-sys-color-error); --errBg:var(--md-sys-color-error-container);
+  --amber:var(--md-sys-color-warn);
+  --codeBg:var(--code-bg);
+
+  /* —— ⑤ 旧名别名层(TOKEN_MAP A–J) —— */
+  --bg-base:var(--bg);
+  --panel:var(--surface); --card:var(--surface);
+  --field-bg:var(--md-sys-color-surface-container-low);
+  --hover-2:var(--surface3); --hover-dim:var(--ring);
+  --off-bg:var(--surface3);
+  --overlay:rgba(0,0,0,.45);
+  --line-base:var(--md-sys-color-outline-variant);
+  --line-soft-base:color-mix(in srgb, var(--md-sys-color-outline-variant) 55%, transparent);
   --line-soft:var(--line-soft-base);
-  --line-strong:#d4d8e0;    /* hover 描边 */
-  --hover-2:#eceef2;        /* 次级 hover 底 */
-  --hover-dim:#0000000f;
-
-  /* —— 文字 —— */
-  --txt:#1f2430;
-  --txt-strong:#3b414f;     /* 标题 */
-  --txt-2:#4a4f5c;          /* 常规可点文字 */
-  --txt-3:#5b6170;
-  --muted:#656b7a;
-  --muted2:#767d8d;
-  --placeholder:#c4cad6;
-  --icon:#6b7180;
-  --on-accent:#ffffff;      /* 彩色底上的字/图标 */
-
-  /* —— 强调色(只保留灰色亮色主题,删去 mac 8 色主题切换)—— */
-  --accent:#8e8e93;
-  --accent-bg:#eef0f3;
-  --accent-soft:#f4f5f7;
-  /* 向后兼容别名:旧代码 / 未合并分支(如 PR#1)仍用 --blue* */
+  --line-strong:var(--md-sys-color-outline);
+  --divider-base:var(--md-sys-color-outline-variant); --divider:var(--divider-base);
+  --txt-strong:var(--md-sys-color-on-surface);
+  --txt-2:var(--md-sys-color-on-surface);
+  --txt-3:var(--md-sys-color-on-surface-variant);
+  --muted:var(--md-sys-color-on-surface-variant);
+  --muted2:var(--md-sys-color-outline);
+  --placeholder:var(--md-sys-color-outline);
+  --on-accent:var(--md-sys-color-on-primary);
+  --accent:var(--md-sys-color-primary);
+  --accent-bg:var(--md-sys-color-primary-container);
+  --accent-soft:var(--surface3);
   --blue:var(--accent); --blue-bg:var(--accent-bg); --blue-soft:var(--accent-soft);
+  --brand1:var(--txt); --brand2:var(--txt);
+  --ink-green:var(--acc); --ink-green-hover:var(--acc2);
+  --confirm-primary-bg:var(--acc); --confirm-primary-fg:var(--onAcc);
+  --ok:var(--md-sys-color-success); --ok-strong:var(--md-sys-color-success);
+  --ok-bg:color-mix(in srgb, var(--md-sys-color-success) 12%, var(--surface));
+  --ok-ring:color-mix(in srgb, var(--md-sys-color-success) 25%, transparent);
+  --success:var(--ok-strong); --success-bg:var(--ok-bg); --success-ring:var(--ok-ring);
+  --danger:var(--md-sys-color-error); --danger-dot:var(--md-sys-color-error);
+  --danger-text:var(--md-sys-color-error); --danger-bg:var(--md-sys-color-error-container);
+  --danger-ring:color-mix(in srgb, var(--md-sys-color-error) 28%, transparent);
+  --switch-off:var(--md-sys-color-outline); --dot-idle:var(--md-sys-color-outline-variant);
+  --radius:var(--r-xs); --radius-sm:var(--r-2xs);
+  --shadow:var(--elev-1); --shadow-pop:var(--elev-2); --shadow-modal:var(--elev-2);
+  --tooltip-bg:var(--surface); --tooltip-fg:var(--txt); --tooltip-border:var(--line);
+  --fold-thinking-border:var(--line); --fold-thinking-bg:transparent;
+  --fold-tool-border:var(--line); --fold-tool-bg:transparent;
+  --fold-result-border:var(--line); --fold-result-bg:transparent;
+  --fold-turn-border:var(--line); --fold-turn-bg:var(--md-sys-color-surface-container-low);
+  --fold-retry-border:var(--line-soft); --fold-retry-bg:transparent;
 
-  /* —— 品牌徽标渐变 —— */
-  --brand1:#ffb35c;
-  --brand2:#ff7a59;
-
-  /* —— 状态：成功 / 危险 / 关闭 —— */
-  --ok:#39a85a;
-  --ok-strong:#2f9e54;
-  --ok-bg:#e9f7ee;
-  --ok-ring:#39a85a33;
-  /* 发送键专用：浅色=黑色，深色在 dark 块里覆盖为深蓝 */
-  --ink-green:#1a1a1a;
-  --ink-green-hover:#000000;
-  --danger:#d64545;
-  --danger-dot:#e23b3b;
-  --danger-text:#d3514f;
-  --danger-bg:#fdeceb;
-  --danger-ring:#e23b3b38;
-  --confirm-primary-bg:#1a1a1a;
-  --confirm-primary-fg:#ffffff;
-  --success:var(--ok-strong);
-  --success-bg:var(--ok-bg);
-  --success-ring:var(--ok-ring);
-  --off-bg:#eef0f3;
-  --switch-off:#cfd4de;
-  --dot-idle:#c2c7d0;
-
-  /* —— 外观切换页的样本色（不跟随当前主题，固定为 light/dark 实际配色） —— */
-  --sample-light-bg:#f4f5f7;
-  --sample-light-panel:#ffffff;
-  --sample-light-line:#e9eaee;
-  --sample-dark-bg:#161b22;
-  --sample-dark-panel:#21262d;
-  --sample-dark-line:#484f58;
-
-  /* —— 阴影 / 遮罩 —— */
-  --overlay:#14192861;
-  --shadow:0 1px 2px #1419280a, 0 8px 24px #1419280d;
-  --shadow-pop:0 8px 24px #14192829;
-  --shadow-modal:0 18px 50px #14192847;
-
-  --divider-base:rgba(0,0,0,.12);
-  --divider:var(--divider-base);
-  --tooltip-bg:var(--card);
-  --tooltip-fg:var(--txt);
-  --tooltip-border:var(--line-strong);
-
-  --radius:4px; --radius-sm:2px;
-  /* —— 折叠块 —— */
-  --fold-thinking-border:#d4c090;
-  --fold-thinking-bg:#fefbf3;
-  --fold-tool-border:#90b8d4;
-  --fold-tool-bg:#f3f8fe;
-  --fold-result-border:#a0d4a0;
-  --fold-result-bg:#f4fdf4;
-  --fold-turn-border:var(--line);
-  --fold-turn-bg:var(--field-bg);
-  --fold-retry-border:var(--line-soft);
-  --fold-retry-bg:transparent;
+  /* —— ⑥ 外观切换页样本色板(固定 light/dark 实际值, 白名单 J 区) —— */
+  --sample-light-bg:#ffffff; --sample-light-panel:#fbfbfd; --sample-light-line:#e6e6ea;
+  --sample-dark-bg:#0a0a0a; --sample-dark-panel:#1f1f1f; --sample-dark-line:#2c2c2e;
 }
 
-/* —— 主题色板(素色:仅 accent 浅底) —— */
-html[data-theme]{
-  --accent-bg:color-mix(in srgb, var(--accent) 14%, var(--panel));
-  --accent-soft:color-mix(in srgb, var(--accent) 7%, var(--panel));
-  --brand1:color-mix(in srgb, var(--accent) 40%, #ffc978);
-  --brand2:var(--accent);
-}
+/* GA 智能引号字形补丁: U+2018–201F 强制走 Latin 字体, 防 CJK 回退渲成全角引号出现大间隙 */
+@font-face{font-family:'GAQuote';src:local('SF Pro Text'),local('Segoe UI'),local('Roboto'),local('Helvetica Neue'),local('Arial');unicode-range:U+2018-201F}
 
-/* —— 外观：浅色（accent 轻 tint 页面/边框）—— */
-html[data-appearance="light"]:not([data-plain="1"])[data-theme]{
-  --accent-bg:color-mix(in srgb, var(--accent) 20%, var(--panel));
-  --accent-soft:color-mix(in srgb, var(--accent) 11%, var(--panel));
-  --bg:color-mix(in srgb, var(--accent) 7%, var(--bg-base));
-  --line:color-mix(in srgb, var(--accent) 16%, var(--line-base));
-  --line-soft:color-mix(in srgb, var(--accent) 10%, var(--line-soft-base));
-  --divider:var(--divider-base);
-}
-
-/* —— 外观：深色 —— */
+/* —— ⑦ 深色入口: 机制保留 html[data-appearance="dark"](JS 契约 applyAppearance 不动), 值 1:1 取自 GA dark 组 —— */
 html[data-appearance="dark"]{
-  --bg-base:#161b22;
-  --bg:#161b22;
-  --panel:#21262d;
-  --card:#21262d;
-  --field-bg:#161b22;
-  --line-base:#484f58;
-  --line:#484f58;
-  --line-soft-base:#30363d;
-  --line-soft:#30363d;
-  --line-strong:#656d76;
-  --hover-2:#30363d;
-  --hover-dim:#ffffff0f;
-  --txt:#e6edf3;
-  --txt-strong:#ffffff;
-  --txt-2:#c9d1d9;
-  --txt-3:#afb8c1;
-  --muted:#9aa3af;
-  --muted2:#828b96;
-  --placeholder:#656d76;
-  --icon:#7d8590;
-  --off-bg:#30363d;
-  --switch-off:#656d76;
-  --dot-idle:#656d76;
-  --ok:#3fb950;
-  --ok-strong:#46c35a;
-  --ok-bg:#12261e;
-  --ok-ring:#3fb95033;
-  --danger:#f85149;
-  --danger-dot:#f85149;
-  --danger-text:#ff7b72;
-  --danger-bg:#2d1515;
-  --danger-ring:#f8514938;
-  --confirm-primary-bg:#e6edf3;
-  --confirm-primary-fg:#161b22;
-  --overlay:#010409a6;
-  --shadow:0 1px 2px #01040966, 0 8px 24px #01040966;
-  --shadow-pop:0 8px 24px #01040999;
-  --shadow-modal:0 18px 50px #010409cc;
-  /* —— 折叠块（dark 覆盖） —— */
-  --fold-thinking-border:#6b5b30;
-  --fold-thinking-bg:#2a2418;
-  --fold-tool-border:#3a5066;
-  --fold-tool-bg:#16202b;
-  --fold-result-border:#3f6647;
-  --fold-result-bg:#15241a;
-  --divider-base:rgba(255,255,255,.10);
-  --divider:var(--divider-base);
-  /* 发送键：深色用鲜亮深蓝 */
-  --ink-green:#2559d8;
-  --ink-green-hover:#3a6ef0;
+  color-scheme:dark;
+  --md-sys-color-primary:#f5f5f7; --md-sys-color-on-primary:#1d1d1f;
+  --md-sys-color-primary-container:#2a2a2c; --md-sys-color-on-primary-container:#f5f5f7;
+  --md-sys-color-secondary-container:#3a3a3c; --md-sys-color-on-secondary-container:#ffffff;
+  --md-sys-color-surface:#0a0a0a; --md-sys-color-surface-container-lowest:#161616;
+  --md-sys-color-surface-container-low:#171717; --md-sys-color-surface-container:#1f1f1f;
+  --md-sys-color-surface-container-high:#262626; --md-sys-color-surface-container-highest:#2e2e2e;
+  --md-sys-color-on-surface:#f5f5f7; --md-sys-color-on-surface-variant:#a1a1a6;
+  --md-sys-color-outline:#48484a; --md-sys-color-outline-variant:#2c2c2e;
+  --md-sys-color-error:#ff453a; --md-sys-color-error-container:#2a1513; --md-sys-color-on-error-container:#ffd5d0;
+  --md-sys-color-success:#32d74b; --md-sys-color-warn:#ff9f0a;
+  --ring:rgba(255,255,255,.09);
+  --code-bg:#171717; --code-fg:#e6e6e6; --code-head:rgba(255,255,255,.05);
+  --acc2:#c7c7cc;
+  --elev-1:0 0 0 1px rgba(255,255,255,.04),0 1px 2px rgba(0,0,0,.5);
+  --elev-2:0 0 0 1px rgba(255,255,255,.04),0 8px 30px rgba(0,0,0,.55);
+  --elev-sheet:0 -8px 40px rgba(0,0,0,.6);
+  --overlay:rgba(0,0,0,.55);
 }
-html[data-appearance="dark"][data-theme]{
-  --accent-bg:color-mix(in srgb, var(--accent) 22%, var(--panel));
-  --accent-soft:color-mix(in srgb, var(--accent) 12%, var(--panel));
-  --divider:var(--divider-base);
-}
+/* ═ TOKEN LAYER END ═ */
 
 html,body{ height:100%; }
 html{ --chat-font:13px; }
