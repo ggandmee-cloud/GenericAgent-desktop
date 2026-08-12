@@ -1791,6 +1791,9 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   padding:6px;
   min-width:160px;
   z-index:50;
+  /* V1 功能组入菜单后条目变多: 约束高度内部滚动, 保证尾部「配置」行在模型多/小窗下始终可达 */
+  max-height:min(60vh, 520px);
+  overflow:auto;
   transform-origin:top; animation:menuIn .16s var(--ease-in-soft);
 }
 .ga-menu-item{

@@ -3718,6 +3718,8 @@ function positionTooltip() {
 function showTooltip(target) {
   const text = target?.dataset?.tooltip || '';
   if (!text) return;
+  // 已展开菜单的触发器不弹(菜单本身就是说明; 且浮条恰会压住上弹菜单的尾行——V3 附图取证时实测)
+  if (target.classList?.contains('open') || target.getAttribute?.('aria-expanded') === 'true') return;
   tooltipTarget = target;
   clearTimeout(tooltipTimer);
   tooltipTimer = setTimeout(() => {
@@ -3752,7 +3754,8 @@ function initCustomTooltips() {
   }, true);
   document.addEventListener('focusin', (e) => {
     const target = tooltipNodeFromEventTarget(e.target);
-    if (target) showTooltip(target);
+    // 仅键盘聚焦弹出（a11y 本意）：鼠标点击的 focus 会紧跟 pointerdown 的收起而重弹，遮挡刚打开的菜单尾行
+    if (target && target.matches(':focus-visible')) showTooltip(target);
   }, true);
   document.addEventListener('focusout', hideTooltip, true);
   document.addEventListener('pointerdown', hideTooltip, true);  // GV1-S5: 点击即收，防浮条驻留遮挡弹出菜单
@@ -4264,6 +4267,7 @@ function openModelMenu(chipEl, menuEl) {
   renderModelMenu(menuEl);
   menuEl.hidden = false;
   chipEl.classList.add('open');
+  hideTooltip();  // 已弹出的浮条立即收(open 态守卫拦的是后续 pointerover)
   const chipRect = chipEl.getBoundingClientRect();
   const composer = chipEl.closest('.composer');
   if (composer) {

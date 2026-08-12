@@ -2,8 +2,8 @@
   const I18N = {
   zh: {
     'app.title': 'GenericAgent 桌面版',
-    'nav.chat': '聊天', 'nav.services': '后台服务', 'nav.channels': '消息通道', 'nav.status': '状态面板',
-    'nav.collab': '指挥家', 'nav.token': '用量',
+    'nav.chat': '聊天', 'nav.channels': '消息通道', 'nav.status': '状态面板',
+    'nav.collab': '指挥家',
     'set.pages': '页面', 'set.openToken': '用量', 'set.openServices': '后台服务',
     'menu.quickSuffix': '快速接入', 'sn.top': '回到顶部', 'sn.bottom': '回到底部', 'collab.offlineShort': '无法连接 Conductor',
     'guide.deepseekDesc': '官方 API · OpenAI 兼容', 'guide.qwenDesc': '通义千问 · 阿里云百炼',
@@ -209,8 +209,8 @@
   },
   en: {
     'app.title': 'GenericAgent Desktop',
-    'nav.chat': 'Chat', 'nav.services': 'Services', 'nav.channels': 'Channels', 'nav.status': 'Status',
-    'nav.collab': 'Conductor', 'nav.token': 'Usage',
+    'nav.chat': 'Chat', 'nav.channels': 'Channels', 'nav.status': 'Status',
+    'nav.collab': 'Conductor',
     'set.pages': 'Pages', 'set.openToken': 'Usage', 'set.openServices': 'Background services',
     'menu.quickSuffix': 'Quick setup', 'sn.top': 'Back to top', 'sn.bottom': 'Back to bottom', 'collab.offlineShort': 'Conductor unreachable',
     'guide.deepseekDesc': 'Official API · OpenAI-compatible', 'guide.qwenDesc': 'Tongyi Qwen · Aliyun Bailian',
