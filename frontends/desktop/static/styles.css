@@ -931,12 +931,12 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 html[data-boot-has-sessions] .chat-start{ display:none !important; }
 .feature-head{ text-align:center; margin-bottom:26px; }
 .feature-head .page-title{ font-size:23px; font-weight:600; letter-spacing:-.03em; line-height:1.25; color:var(--txt); }
-.feature-head .page-sub{ font-size:15px; color:var(--txt-2); line-height:1.55; margin-top:6px; }
+.feature-head .page-sub{ font-size:15px; color:var(--txt2); line-height:1.55; margin-top:6px; }
 .feature-grid{ display:flex; flex-wrap:wrap; justify-content:center; gap:8px; max-width:560px; margin:0 auto; }
 .fcard{
   position:relative; display:inline-flex; align-items:center; gap:6px; max-width:100%;
   padding:8.5px 14px 8.5px 11px; border:1px solid transparent; border-radius:var(--r-full);
-  font-size:13px; font-weight:500; color:var(--txt-2); cursor:pointer; overflow:hidden;
+  font-size:13px; font-weight:500; color:var(--txt2); cursor:pointer; overflow:hidden;
   background:linear-gradient(var(--chipBg),var(--chipBg)) padding-box,var(--chipEdge) border-box;
   box-shadow:var(--chipShadow);
   transition:transform .12s, box-shadow .2s, color .15s;
@@ -2631,7 +2631,11 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
   .collab-prog-panel{ width:min(232px, 72vw); }
 }
 
-/* —— 无障碍: 减动效(GA 全局规则 1:1) —— */
+/* —— 无障碍: 减动效(GA 全局规则 1:1, 含 96 行运行指示器豁免; GR4 必修补齐) —— */
 @media (prefers-reduced-motion:reduce){
   *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  /* 旋转指示器=功能性动效(唯一"在跑"信号), reduce 时仅放慢不冻结 */
+  .ga-spin, .send.is-busy::after, .collab-rail-spin{
+    animation-duration:.9s !important; animation-iteration-count:infinite !important;
+  }
 }

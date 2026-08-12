@@ -1005,8 +1005,8 @@ function renderMarkdown(text) {
         const label = lang || 'code';
         return `<div class="code-block"><div class="code-block-head"><span class="code-block-lang">${escapeHtml(label)}</span><button class="code-block-copy" aria-label="Copy code">\u29C9</button></div><pre><code class="language-${escapeHtml(label)}">${body}</code></pre></div>`;
       });
-    // C5 表格: .tw 横滚容器(GA .sb .tw 蓝本)
-    html = html.replace(/<table>/g, '<div class="tw"><table>').replace(/<\/table>/g, '</table></div>');
+    // C5 表格: .tw 横滚容器(GA .sb .tw 蓝本); 开标签容带属性, 防不配对 </div>(GR4 边界发现)
+    html = html.replace(/<table(\s[^>]*)?>/g, '<div class="tw"><table$1>').replace(/<\/table>/g, '</table></div>');
     return html;
   } catch (_) { return escapeHtml(text); }
 }
