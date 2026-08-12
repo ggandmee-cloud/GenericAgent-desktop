@@ -788,6 +788,11 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   border-radius:var(--r-xl);
   background:var(--card);
 }
+/* 聊天页覆盖层特异度(0,3,0)会盖掉 base 焦点描边, 必须同步声明(GR3-B1) */
+.page.page--chat-ui .composer-inset:focus-within{
+  border-color:color-mix(in srgb, var(--acc) 30%, var(--line));
+  box-shadow:0 0 0 4px var(--ring);
+}
 .page.page--chat-ui .msgs{
   width:100%;
   max-width:var(--chat-col-w);
@@ -865,7 +870,7 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   padding:6px 8px 6px 14px; background:var(--code-head); border-bottom:1px solid var(--line);
   font-family:var(--font-mono); font-size:.75em; color:var(--muted);
 }
-.code-block-lang{ text-transform:uppercase; letter-spacing:.5px; font-weight:600; opacity:.8; }
+.code-block-lang{ text-transform:uppercase; letter-spacing:.4px; font-weight:600; opacity:.8; }
 .code-block-copy{
   background:none; border:none; color:var(--muted); cursor:pointer;
   font-size:1.1em; padding:2px 4px; border-radius:var(--r-2xs); line-height:1;
@@ -1286,7 +1291,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   border-top-color:var(--on-accent); border-radius:50%;
   animation:ga-spin .65s linear infinite;
 }
-.send svg{ width:17px; height:17px; }
+.send svg{ width:19px; height:19px; }
 /* 运行中：发送键变红色停止键（点击=暂停当前回合）。回车仍走发送（打断重发）。 */
 .send.is-stop{ background:var(--danger); cursor:pointer; }
 .send.is-stop:hover{ background:var(--danger-dot); }
