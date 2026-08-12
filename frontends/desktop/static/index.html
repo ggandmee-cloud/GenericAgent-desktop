@@ -59,6 +59,15 @@
         </div>
       </div>
 
+      <button type="button" class="new-conv">
+        <span data-ga-icon="plus"></span>
+        <span data-i18n="conv.new"></span>
+      </button>
+      <div class="search">
+        <span class="search-ic" data-ga-icon="magnifyingGlass"></span>
+        <input data-i18n-ph="search.placeholder" placeholder="" maxlength="50">
+      </div>
+
       <nav class="nav" id="nav">
         <a class="nav-item active" data-page="chat">
           <span class="ic" data-ga-icon="chatTeardropText"></span>
@@ -78,6 +87,24 @@
           <span data-i18n="nav.token"></span>
         </a>
       </nav>
+
+      <div class="conv-list"></div>
+
+      <!-- 会话操作菜单（fixed 定位，逃逸侧栏 overflow:hidden，禁改 absolute） -->
+      <div class="ctx-menu" id="conv-menu" hidden>
+        <div class="ctx-item" data-act="pin">
+          <span data-ga-icon="pushPinSimple"></span>
+          <span data-i18n="ctx.pin"></span>
+        </div>
+        <div class="ctx-item" data-act="rename">
+          <span data-ga-icon="pencilSimple"></span>
+          <span data-i18n="ctx.rename"></span>
+        </div>
+        <div class="ctx-item danger" data-act="del">
+          <span data-ga-icon="trash"></span>
+          <span data-i18n="ctx.del"></span>
+        </div>
+      </div>
 
       <!-- 快速接入官方模型（DeepSeek / 通义千问）：填好 API Key 即可使用 -->
       <div class="provider-quickstart" id="provider-quickstart">
@@ -142,9 +169,6 @@
             </button>
             <button class="run-state" id="run-toggle" type="button">
               <i class="dot"></i> <span class="rs-label"></span>
-            </button>
-            <button type="button" class="pt-icon pt-rp-toggle" aria-label="toggle conversations">
-              <span data-ga-icon="caretRight"></span>
             </button>
           </div>
           <div class="chat-shell">
@@ -212,9 +236,6 @@
               <span data-ga-icon="caretLeft"></span>
             </button>
             <span class="pt-spacer"></span>
-            <button type="button" class="pt-icon pt-rp-toggle" aria-label="toggle conversations">
-              <span data-ga-icon="caretRight"></span>
-            </button>
           </div>
           <div class="page-pad">
             <div class="page-title" data-i18n="page.services.title"></div>
@@ -246,9 +267,6 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               </button>
             </div>
-            <button type="button" class="pt-icon pt-rp-toggle" aria-label="toggle conversations">
-              <span data-ga-icon="caretRight"></span>
-            </button>
           </div>
           <div class="chat-shell">
           <div class="chat-panel">
@@ -361,9 +379,6 @@
               <span data-ga-icon="caretLeft"></span>
             </button>
             <span class="pt-spacer"></span>
-            <button type="button" class="pt-icon pt-rp-toggle" aria-label="toggle conversations">
-              <span data-ga-icon="caretRight"></span>
-            </button>
           </div>
           <div class="page-pad">
             <div class="page-title" data-i18n="page.token.title"></div>
@@ -400,38 +415,6 @@
 
       </div>
     </main>
-
-    <!-- ④ 右侧会话面板 -->
-    <div class="rp-resize" id="rp-resize"></div>
-    <aside class="rightpanel" id="rightpanel">
-      <div class="rp-head">
-        <div class="search">
-          <span class="search-ic" data-ga-icon="magnifyingGlass"></span>
-          <input data-i18n-ph="search.placeholder" placeholder="" maxlength="50">
-        </div>
-      </div>
-      <button type="button" class="new-conv">
-        <span data-ga-icon="plus"></span>
-        <span data-i18n="conv.new"></span>
-      </button>
-      <div class="conv-list"></div>
-
-      <!-- 会话操作菜单 -->
-      <div class="ctx-menu" id="conv-menu" hidden>
-        <div class="ctx-item" data-act="pin">
-          <span data-ga-icon="pushPinSimple"></span>
-          <span data-i18n="ctx.pin"></span>
-        </div>
-        <div class="ctx-item" data-act="rename">
-          <span data-ga-icon="pencilSimple"></span>
-          <span data-i18n="ctx.rename"></span>
-        </div>
-        <div class="ctx-item danger" data-act="del">
-          <span data-ga-icon="trash"></span>
-          <span data-i18n="ctx.del"></span>
-        </div>
-      </div>
-    </aside>
 
   </div>
 

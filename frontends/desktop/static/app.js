@@ -1595,13 +1595,9 @@ const runLabel   = runToggle?.querySelector('.rs-label');
 const convListEl = document.querySelector('.conv-list');
 const newConvBtn = document.querySelector('.new-conv');
 const searchInput = document.querySelector('.search input');
-const rpResize   = document.getElementById('rp-resize');
-const rpPanel    = document.getElementById('rightpanel');
 const bodyEl     = document.querySelector('.body');
-/* 每个页面的 page-top 各自挂一对 hamburger / 会话 按钮(.pt-sb-toggle / .pt-rp-toggle),
-   全部绑同一个 toggle,效果跟以前的单一 sb-toggle/rp-toggle 一样,只是入口变成顶栏。 */
+/* 每个页面的 page-top 挂一个 hamburger(.pt-sb-toggle) 控制唯一侧栏（U1 起右栏并入左栏）。 */
 document.querySelectorAll('.pt-sb-toggle').forEach(b => b.addEventListener('click', () => bodyEl.classList.toggle('sb-collapsed')));
-document.querySelectorAll('.pt-rp-toggle').forEach(b => b.addEventListener('click', () => bodyEl.classList.toggle('rp-collapsed')));
 
 const sbResize = document.getElementById('sb-resize');
 const sbPanel  = document.querySelector('.sidebar');
@@ -1633,8 +1629,7 @@ function bindResize(handle, panel, dir, min, max) {
     document.body.style.userSelect = '';
   });
 }
-bindResize(rpResize, rpPanel, -1, 160, 400);  // 右栏:cursor 左移 → 增宽
-bindResize(sbResize, sbPanel, +1, 180, 360);  // 左栏:cursor 右移 → 增宽
+bindResize(sbResize, sbPanel, +1, 220, 400);  // 左栏(唯一侧栏):cursor 右移 → 增宽
 const modelChip  = document.getElementById('model-chip');
 const modelNameEl= modelChip ? modelChip.querySelector('.model-name') : null;
 // conductor 页面也有一个独立的模型 chip,共用一份模型数据
