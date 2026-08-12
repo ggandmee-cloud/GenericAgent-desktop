@@ -48,6 +48,16 @@
 
 <div id="app">
 
+  <!-- W3.5v2: 自绘标题带（Boss 2026-08-13 二拍: 开关放原生标题栏位）——
+       壳侧 titleBarStyle:Overlay + hiddenTitle, 红绿灯悬浮于此带; data-tauri-drag-region 保窗口拖拽 -->
+  <div id="titlebar" data-tauri-drag-region>
+    <span class="tb-lights-pad" data-tauri-drag-region aria-hidden="true"></span>
+    <button type="button" class="sb-icon-btn sb-toggle" id="sb-toggle" data-i18n-title="sb.toggle">
+      <span data-ga-icon="sidebarSimple"></span>
+    </button>
+    <span class="tb-title" id="tb-title" data-tauri-drag-region></span>
+  </div>
+
   <div class="body">
 
     <!-- ① 左侧边栏 -->
@@ -105,10 +115,6 @@
       </div>
     </aside>
     <div class="sb-resize" id="sb-resize"></div>
-    <!-- W3+: 左上角常驻侧栏开关（Boss 2026-08-13 拍板；替代 V1 的折叠钮+展开 fab 双件） -->
-    <button type="button" class="sb-icon-btn sb-toggle" id="sb-toggle" data-i18n-title="sb.toggle">
-      <span data-ga-icon="sidebarSimple"></span>
-    </button>
 
     <!-- 中间主区 -->
     <main class="main">

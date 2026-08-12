@@ -19,7 +19,9 @@
         "resizable": true,
         "maximized": false,
         "visible": false,
-        "url": "loading.html"
+        "url": "loading.html",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       },
       {
         "title": "GenericAgent — Setup",

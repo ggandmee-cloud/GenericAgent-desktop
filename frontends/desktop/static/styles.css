@@ -499,11 +499,10 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 /* W2.4: 深色下 divider 近不可辨，右缘 hairline 提一档（浅色面差已够不加） */
 html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
 /* V1: 侧栏顶行 = 新对话主按钮（顶部品牌标识区删除，Boss 2026-08-12 拍板保持清爽）
-   W3+: 折叠钮撤出顶行，左侧留位给 fixed 的 .sb-toggle（28px 钮 + 6px 间距） */
+   W3.5v2: 折叠钮迁入 #titlebar 标题带, 顶行回归单钮满宽 */
 .sb-top{
   display:flex; align-items:center; gap:6px;
   flex:0 0 auto;
-  padding-left:34px;
 }
 .sb-top .new-conv{ flex:1; min-width:0; }
 /* 纯图标按钮（原顶栏图标钮视觉等价迁移） */
@@ -515,17 +514,24 @@ html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
 }
 .sb-icon-btn:hover{ opacity:1; color:var(--txt); background:var(--surface3); }
 .sb-icon-btn svg{ width:18px; height:18px; transition:transform .2s; }  /* W2.1: 图标 16→18 提高辨识 */
-/* W3+: 左上角常驻侧栏开关（Boss 2026-08-13）：展开态融入侧栏顶行(ghost)，
-   折叠态浮于内容上加面色+边界+投影自证可点（低于 modal/menu 层） */
-.sb-toggle{
-  position:fixed; left:12px; z-index:40;
-  /* 与新对话钮(shell-pad + shell-gap 起、高 new-conv-h)垂直居中对位 */
-  top:calc(var(--shell-pad) + var(--shell-gap) + (var(--new-conv-h) - 28px) / 2);
+/* W3.5v2: 自绘标题带（Boss 2026-08-13 二拍: 开关放原生标题栏位, 对照参考截图）
+   壳侧 Overlay+hiddenTitle 使红绿灯悬浮于带上; 带=拖拽区, 开关+会话名内嵌;
+   高 32px 使 28px 钮与红绿灯纵心近似对齐(原生灯心距顶约 14px, 带心 16px) */
+#titlebar{
+  flex:0 0 32px; height:32px;
+  display:flex; align-items:center; gap:8px;
+  padding:0 12px 0 84px;  /* 左让红绿灯(≈62px)+呼吸位 */
+  background:var(--panel);
+  border-bottom:1px solid var(--divider);
+  -webkit-user-select:none; user-select:none;
 }
-.body.sb-collapsed .sb-toggle{
-  background:var(--panel); border:1px solid var(--line);
-  box-shadow:var(--shadow);
+.tb-lights-pad{ display:none; }  /* 红绿灯占位并入 padding-left; 留节点作非 Tauri 环境探测/未来自定位 */
+.tb-title{
+  font-size:12.5px; color:var(--txt-2); font-weight:500;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  min-width:0;
 }
+html[data-appearance="dark"] #titlebar{ border-bottom-color:var(--line); }
 
 .ga-num{
   font-family:var(--font-num);

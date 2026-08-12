@@ -423,8 +423,13 @@ function syncDocTitle() {
   let name = '';
   try { const s = activeSess(); if (s) name = displayTitle(s); } catch (_) { /* 启动早期数据未就绪 */ }
   const next = name || t('app.title');
+  // W3.5v2: 自绘标题带同步（hiddenTitle 后原生标题不显, 带内文本是用户可见标题）——
+  // 置于 document.title 守卫前: 首帧 <title> 可能已等于 next, 带文本仍需初始化
+  const tb = document.getElementById('tb-title');
+  if (tb && tb.textContent !== next) tb.textContent = next;
   if (document.title === next) return;
   document.title = next;
+  // 原生 title 仍喂 Mission Control/Dock（hiddenTitle 只是不画在窗上）
   try { window.__TAURI__?.window?.getCurrentWindow?.().setTitle(next)?.catch?.(() => {}); } catch (_) {}
 }
 function applyI18n() {
