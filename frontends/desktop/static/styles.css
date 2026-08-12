@@ -460,24 +460,29 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   box-sizing:border-box;
   transition:width .2s, padding .2s, opacity .15s;
 }
-.brand{
-  display:flex; align-items:center; gap:0;
-  flex:0 0 var(--shell-head-h);
-  height:var(--shell-head-h);
-  max-height:var(--shell-head-h);
-  padding:0 6px;
-  box-sizing:border-box;
-  overflow:hidden;
+/* V1: 侧栏顶行 = 折叠钮 + 新对话主按钮（brand 区删除，Boss 2026-08-12 拍板保持清爽） */
+.sb-top{
+  display:flex; align-items:center; gap:6px;
+  flex:0 0 auto;
 }
-.brand-text{ display:flex; flex-direction:column; min-width:0; justify-content:center; }
-.brand-name{
-  font-family:var(--font-brand);
-  font-weight:400;
-  font-size:17px;
-  line-height:1;
-  white-space:nowrap;
+.sb-top .new-conv{ flex:1; min-width:0; }
+/* 纯图标按钮（原顶栏图标钮视觉等价迁移） */
+.sb-icon-btn{
+  width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
+  background:transparent; border:none; padding:0; flex:0 0 auto; border-radius:var(--r-full);
+  color:var(--txt-2); opacity:.7; cursor:pointer;
+  transition:opacity .15s, color .15s, background .15s;
 }
-.brand-sub{ display:none; }
+.sb-icon-btn:hover{ opacity:1; color:var(--txt); background:var(--surface3); }
+.sb-icon-btn svg{ width:16px; height:16px; transition:transform .2s; }
+/* 折叠态常驻展开钮：fixed 左上，仅折叠时可见（低于 modal/menu 层） */
+.sb-expand-fab{
+  position:fixed; top:12px; left:12px; z-index:40;
+  display:none;
+  background:var(--panel); border:1px solid var(--line);
+  box-shadow:var(--shadow);
+}
+.body.sb-collapsed .sb-expand-fab{ display:inline-flex; }
 
 .ga-num{
   font-family:var(--font-num);
@@ -508,59 +513,32 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 }
 .nav-item.active .beta{ background:var(--card); }
 
-/* margin-top:6px 跟 .provider-quickstart 内部的 gap:6px 对齐,
-   保证「通义千问 → 配置」和「pq-head → DeepSeek」间距一致 */
-.sidebar-foot{ border-top:none; padding-top:0; margin-top:6px; }
-.foot-ver{
-  font-size:10px; color:var(--muted2); padding:10px 10px 2px;
-  font-family:var(--font-num); font-variant-numeric:var(--font-num-variant);
-}
-.foot-row{
-  display:flex; justify-content:space-between; align-items:center;
-  padding:14px 10px; border-radius:var(--radius-sm); color:var(--txt-2); cursor:pointer;
-  font-family:var(--font-sans);
-}
-.foot-row:hover{ background:var(--surface3); }
 .chev{ width:14px; height:14px; color:var(--muted2); flex:0 0 auto; }
+/* V1: 侧栏底部服务状态行（原聊天页顶栏 #run-toggle 迁入；.run-state 四态类照常作用） */
+.sidebar .sb-status{
+  margin-top:6px; padding:8px 10px 2px;
+  border-top:1px solid var(--divider);
+  justify-content:flex-start; cursor:default;
+  height:auto; max-height:none;
+}
 
-/* ── 侧边栏「快速接入官方模型」:头部与「配置」按钮同款 foot-row 风格,
-   左侧 lightning 图标 + 标题,右侧 caretRight 跟"配置"完全一致,
-   展开时旋转 90° 朝下,折叠时朝右(== "配置"的 >)。默认展开,可折叠。── */
-.provider-quickstart{
-  flex:0 0 auto; margin-top:8px;
-  display:flex; flex-direction:column; gap:6px;
+/* V1: 指挥家页连接状态条（原顶栏状态灯+重试钮迁入内容区顶部） */
+.collab-conn{
+  flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:6px;
+  padding:4px 16px 0;
 }
-.pq-head{
+/* V1: 模型菜单功能组（分隔线 + 快速接入/配置行） */
+.ga-menu-sep{ height:1px; background:var(--divider); margin:4px 8px; }
+.ga-menu-item.fn{ display:flex; align-items:center; gap:8px; color:var(--txt-2); }
+.ga-menu-item.fn .ic{ width:14px; height:14px; flex:0 0 auto; opacity:.8; }
+/* V1: 设置弹窗「页面」直达组（原配置脚行视觉语义） */
+.set-nav-rows{ display:flex; flex-direction:column; gap:2px; }
+.set-nav-row{
   display:flex; justify-content:space-between; align-items:center;
-  padding:14px 10px; border-radius:var(--radius-sm); color:var(--txt-2); cursor:pointer;
-  font-family:var(--font-sans); user-select:none;
+  padding:10px 10px; border-radius:var(--radius-sm); color:var(--txt-2); cursor:pointer;
+  font-family:var(--font-sans); font-size:13px;
 }
-.pq-head:hover{ background:var(--surface3); }
-.pq-collapse{ transition:transform .18s; transform-origin:center; }
-.pq-head:hover .pq-collapse{ color:var(--txt-2); }
-.pq-body{ display:flex; flex-direction:column; gap:6px; padding:0 10px; }
-/* 默认展开:箭头朝下;折叠:箭头朝右(== 「配置」的 >) */
-.provider-quickstart:not(.collapsed) .pq-collapse{ transform:rotate(90deg); }
-.provider-quickstart.collapsed .pq-collapse{ transform:rotate(0deg); }
-.provider-quickstart.collapsed{ gap:0; }
-.provider-quickstart.collapsed .pq-body{ display:none; }
-.pq-btn{
-  display:flex; align-items:center; gap:8px; width:100%;
-  padding:7px 8px; border:1px solid var(--line-base); border-radius:var(--radius-sm);
-  background:var(--field-bg); cursor:pointer; text-align:left;
-  transition:border-color .15s, background .15s;
-}
-.pq-btn:hover{ background:var(--surface3); border-color:var(--line); }
-.pq-logo{
-  flex:0 0 auto; width:26px; height:26px; border-radius:var(--r-2xs);
-  display:flex; align-items:center; justify-content:center;
-}
-.pq-logo svg{ width:16px; height:16px; }
-.pq-btn-text{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
-.pq-btn-name{ font-size:12px; font-weight:500; color:var(--txt); line-height:1.35; }
-.pq-btn-desc{ font-size:10px; color:var(--muted); line-height:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pq-arrow{ flex:0 0 auto; width:13px; height:13px; color:var(--muted2); transition:transform .15s, color .15s; }
-.pq-btn:hover .pq-arrow{ color:var(--txt-2); transform:none; }
+.set-nav-row:hover{ background:var(--surface3); }
 
 /* ── 添加模型弹窗内的接入指引横幅 ── */
 .model-guide{
@@ -612,33 +590,7 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   justify-content:space-between; padding:0 16px; border-bottom:none;
   background:var(--panel);
 }
-/* 各页面自带的顶栏(融入页面、随页面切换),沿用旧 .topbar 视觉,但归属各 page */
-.page > .page-top{
-  height:var(--shell-head-h); max-height:var(--shell-head-h);
-  flex:0 0 var(--shell-head-h);
-  display:grid; grid-template-columns:28px 1fr 28px; align-items:center;
-  padding:0 4px; column-gap:8px;
-  background:var(--panel);
-  box-sizing:border-box;
-}
-.page > .page-top .run-state{
-  grid-column:2; justify-self:center;
-  height:var(--shell-head-h); max-height:var(--shell-head-h);
-}
-.page > .page-top .pt-sb-toggle{ grid-column:1; justify-self:start; }
-.page > .page-top .pt-spacer{ grid-column:2; }
-/* 顶栏左侧纯图标按钮(无边框、无背景):.pt-sb-toggle 开关唯一侧栏。
-   收起时 svg 旋转 180°,跟之前箭头 toggle 的视觉行为一致。 */
-.pt-icon{
-  width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
-  background:transparent; border:none; padding:0; flex:0 0 auto; border-radius:var(--r-full);
-  color:var(--txt-2); opacity:.7; cursor:pointer;
-  transition:opacity .15s, color .15s, background .15s;
-}
-.pt-icon:hover{ opacity:1; color:var(--txt); background:var(--surface3); }
-.pt-icon svg{ width:16px; height:16px; transition:transform .2s; }
-.body.sb-collapsed .pt-sb-toggle svg{ transform:rotate(180deg); }
-.pt-spacer{ flex:1 1 auto; }
+/* V1: 页面顶栏已删除（折叠钮迁侧栏顶行、状态灯迁侧栏底部、collab 状态条迁内容区） */
 .tb-left{ display:flex; align-items:center; gap:14px; font-size:12px; }
 .pill{
   border:1px solid var(--line); background:var(--card); border-radius:var(--r-full);
@@ -736,9 +688,8 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 .page-title{ font-size:18px; font-weight:600; color:var(--txt-strong); font-family:var(--font-sans); }
 .page-sub{ font-size:12px; color:var(--muted); margin-top:5px; margin-bottom:16px; }
 
-/* 聊天 / Conductor 共用对话布局（page--chat-ui） */
-.page.page--chat-ui{ min-height:0; width:100%; }
-.page.page--chat-ui > .page-top{ flex:0 0 var(--shell-head-h); }
+/* 聊天 / Conductor 共用对话布局（page--chat-ui）；V1 删顶栏后由 padding-top 补顶距 */
+.page.page--chat-ui{ min-height:0; width:100%; padding-top:10px; box-sizing:border-box; }
 .page.page--chat-ui > .chat-shell{
   flex:1; min-height:0; width:100%;
   margin-top:var(--shell-gap);
@@ -2376,11 +2327,6 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
 #collab-welcome[hidden], .collab-msgs .msgs[hidden],
 .collab-rail[hidden], .collab-prog-stats[hidden],
 .collab-rail-run[hidden], .collab-rail-done[hidden], .collab-rail-issue[hidden]{ display:none !important; }
-/* 顶栏中央:状态栏 + 离线时的刷新图标按钮(取代原本的 banner+重试) */
-.page > .page-top .page-top-center{
-  grid-column:2; display:flex; align-items:center; justify-content:center; gap:6px;
-  min-width:0;
-}
 /* 收尾按钮:跟 .preset-restore 同款 — 白底 + 中性边框, hover 转 accent 色 */
 .collab-retry-btn{
   width:24px; height:24px;

@@ -585,15 +585,19 @@ function applyAppearance(nextApp, nextPlain, { persist } = { persist: true }) {
 const nav = document.getElementById('nav');
 const pages = document.querySelectorAll('#pages .page');
 let currentPage = 'chat';
+/* V1(GV0-B1): nav 缩编后 token/services 无 nav 项——item 可为 null（高亮全灭为合法态），
+   数据加载随切页在此触发（原挂 nav click 监听，绕过 nav 直达会白屏）。 */
 function gaGoPage(key) {
+  if (![...pages].some(p => p.dataset.page === key)) return;
   const item = nav?.querySelector(`.nav-item[data-page="${key}"]`);
-  if (!item) return;
   currentPage = key;
   nav.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n === item));
   pages.forEach(p => p.classList.toggle('active', p.dataset.page === key));
   renderSessionList();
   window.gaSetActiveFileComposer?.(key === 'collab' ? 'collab' : 'chat');
   if (key === 'collab') window.collabInit?.();
+  if (key === 'token') { if (_tokTab === 'conductor') loadConductorTokens(); else loadTokenPage(); }
+  if (key === 'services') refreshServicesPanel();
 }
 window.gaGoPage = gaGoPage;
 nav.addEventListener('click', (e) => {
@@ -610,18 +614,18 @@ const closeModals = () => document.querySelectorAll('.modal').forEach(m => {
   m.querySelectorAll('.field-limit-hint').forEach(h => h.style.display = 'none');
 });
 const bindClick = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
-function openServiceManagerFromSettings() {
-  closeModals();
-  gaGoPage('services');
-  setSvcTab('status');
-  void loadStatusPanel();
-}
 bindClick('add-model-btn', (e) => {
   e.stopPropagation();
   openAddModelForm();
 });
-bindClick('settings-btn',  (e) => { e.stopPropagation(); openSettings(); });
-bindClick('settings-services-btn', (e) => { e.stopPropagation(); openServiceManagerFromSettings(); });
+// V1: 设置弹窗「页面」直达组（nav 缩编后 用量/后台服务 的入口）
+document.querySelectorAll('.set-nav-row[data-goto-page]').forEach(row => {
+  row.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeModals();
+    gaGoPage(row.dataset.gotoPage);
+  });
+});
 
 const importMykeyInput = document.getElementById('import-mykey-input');
 async function importMykeyFromFile(file) {
@@ -791,53 +795,18 @@ bindClick('ga-source-clear-btn', async (e) => {
   }
 });
 refreshGaSource();
-// 侧边栏「快速接入」：官方模型 → 预填表单；ga-token → 开 portal 写 mykey
-const pqEl = document.getElementById('provider-quickstart');
-const pqGaBtn = document.getElementById('pq-ga-token');
-if (pqGaBtn) bridgeFetch('/subscription-portal').then(r => { pqGaBtn.hidden = !r?.available; }).catch(() => {});
-if (pqEl) pqEl.addEventListener('click', (e) => {
-  const btn = e.target.closest('.pq-btn[data-provider]');
-  if (!btn) return;
-  e.preventDefault(); e.stopPropagation();
-  if (btn.dataset.provider === 'ga-token') {
-    window.ga.getMykeyContent().then(r => {
-      const base = r?.content || '', t0 = Date.now();
-      bridgeFetch('/subscription-portal', { method: 'POST', body: {} });
-      const timer = setInterval(async () => {
-        const cur = (await window.ga.getMykeyContent().catch(() => null))?.content;
-        if ((cur != null && cur !== base) || Date.now() - t0 > 3e5) { clearInterval(timer); if (cur !== base) await loadModelProfiles(); }
-      }, 3000);
-    });
-    return;
-  }
-  openAddModelFormForProvider(btn.dataset.provider);
-});
-// 「快速接入」卡片折叠/展开（向下箭头），状态记忆到 localStorage
-const pqToggle = document.getElementById('pq-toggle');
-let pqReevalDefault = () => {};  // U4: loadSessions 完成后重估默认折叠（GU0-S4：pq 初始化时 sessions 恒为空）
-if (pqEl && pqToggle) {
-  const applyPq = (collapsed) => {
-    pqEl.classList.toggle('collapsed', collapsed);
-    pqToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-  };
-  let pqCollapsed = false, pqHasPref = true;
-  try {
-    const v = localStorage.getItem('ga_pq_collapsed');
-    pqHasPref = v !== null;
-    pqCollapsed = v === '1';
-  } catch (_) {}
-  applyPq(pqCollapsed);
-  // U4: 无存储偏好且已有会话 → 默认折叠（不写存储，用户手动操作过则永不重估）
-  pqReevalDefault = () => { if (!pqHasPref && state.sessions.size > 0) applyPq(true); };
-  const togglePq = (e) => {
-    if (e) e.stopPropagation();
-    pqCollapsed = !pqEl.classList.contains('collapsed');
-    applyPq(pqCollapsed);
-    try { localStorage.setItem('ga_pq_collapsed', pqCollapsed ? '1' : '0'); } catch (_) {}
-  };
-  pqToggle.addEventListener('click', togglePq);
-  pqToggle.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePq(); }
+/* V1: 快速接入收纳进模型菜单（原侧栏推广卡删除）。
+   gaTokenPortalAvailable 供 renderModelMenu 条件渲染 GA Token 行；流程与原实现一致。 */
+let gaTokenPortalAvailable = false;
+bridgeFetch('/subscription-portal').then(r => { gaTokenPortalAvailable = !!r?.available; }).catch(() => {});
+function startGaTokenPortalFlow() {
+  window.ga.getMykeyContent().then(r => {
+    const base = r?.content || '', t0 = Date.now();
+    bridgeFetch('/subscription-portal', { method: 'POST', body: {} });
+    const timer = setInterval(async () => {
+      const cur = (await window.ga.getMykeyContent().catch(() => null))?.content;
+      if ((cur != null && cur !== base) || Date.now() - t0 > 3e5) { clearInterval(timer); if (cur !== base) await loadModelProfiles(); }
+    }, 3000);
   });
 }
 // 接入指引：复制获取 API Key 的链接
@@ -1609,8 +1578,9 @@ const convListEl = document.querySelector('.conv-list');
 const newConvBtn = document.querySelector('.new-conv');
 const searchInput = document.querySelector('.search input');
 const bodyEl     = document.querySelector('.body');
-/* 每个页面的 page-top 挂一个 hamburger(.pt-sb-toggle) 控制唯一侧栏（U1 起右栏并入左栏）。 */
-document.querySelectorAll('.pt-sb-toggle').forEach(b => b.addEventListener('click', () => bodyEl.classList.toggle('sb-collapsed')));
+/* V1: 折叠触发迁侧栏顶行；折叠态由左上角常驻 fab 展开（原页面顶栏已删）。 */
+document.getElementById('sb-collapse-btn')?.addEventListener('click', () => bodyEl.classList.add('sb-collapsed'));
+document.getElementById('sb-expand-fab')?.addEventListener('click', () => bodyEl.classList.remove('sb-collapsed'));
 
 const sbResize = document.getElementById('sb-resize');
 const sbPanel  = document.querySelector('.sidebar');
@@ -3909,7 +3879,7 @@ function setModelApikeyMode(isAdd) {
 // 后端自动补成 /v1/chat/completions（见 mykey_template.py 的拼接规则）。
 const PROVIDER_PRESETS = {
   deepseek: {
-    label: 'DeepSeek', descKey: 'pq.deepseekDesc',
+    label: 'DeepSeek', descKey: 'guide.deepseekDesc',
     protocol: 'oai', apibase: 'https://api.deepseek.com/v1',
     model: 'deepseek-v4-pro', name: 'DeepSeek',
     keyUrl: 'https://platform.deepseek.com/api_keys',
@@ -3917,7 +3887,7 @@ const PROVIDER_PRESETS = {
     logo: '<svg viewBox="0 0 24 24" fill="#4D6BFE" xmlns="http://www.w3.org/2000/svg"><path d="M23.748 4.651c-.254-.124-.364.113-.512.233-.051.04-.094.09-.137.137-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.155-.708-.311-.955-.65-.172-.24-.219-.509-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.094.172.187.129.323-.082.28-.18.553-.266.833-.055.179-.137.218-.328.14a5.5 5.5 0 0 1-1.737-1.179c-.857-.828-1.631-1.743-2.597-2.46a12 12 0 0 0-.689-.47c-.985-.957.13-1.743.387-1.836.27-.098.094-.433-.778-.428-.872.003-1.67.295-2.687.685a3 3 0 0 1-.465.136 9.6 9.6 0 0 0-2.883-.101c-1.885.21-3.39 1.1-4.497 2.622C.082 8.776-.231 10.854.152 13.02c.403 2.284 1.568 4.175 3.36 5.653 1.857 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.132-.284 4.994-1.86.47.234.962.328 1.78.398.629.058 1.235-.031 1.705-.129.735-.155.684-.836.418-.961-2.155-1.004-1.682-.595-2.112-.926 1.095-1.295 2.768-3.598 3.284-6.733.05-.346.115-.834.108-1.114-.004-.171.035-.238.23-.257a4.2 4.2 0 0 0 1.545-.475c1.397-.763 1.96-2.016 2.093-3.517.02-.23-.004-.467-.247-.588M11.58 18.168c-2.088-1.642-3.101-2.183-3.52-2.16-.39.024-.32.472-.234.763.09.288.207.487.371.74.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.168-1.361-.801-2.5-1.86-3.301-3.306-.775-1.393-1.225-2.888-1.299-4.482-.02-.385.094-.522.477-.592a4.7 4.7 0 0 1 1.53-.038c2.131.311 3.946 1.264 5.467 2.774.868.86 1.525 1.887 2.202 2.89.72 1.066 1.494 2.082 2.48 2.915.348.291.626.513.892.677-.802.09-2.14.109-3.055-.615zm1.001-6.44a.306.306 0 0 1 .415-.287.3.3 0 0 1 .113.074.3.3 0 0 1 .086.214c0 .17-.136.307-.308.307a.303.303 0 0 1-.306-.307m3.11 1.596c-.2.081-.4.151-.591.16a1.25 1.25 0 0 1-.798-.254c-.274-.23-.47-.358-.551-.758a1.7 1.7 0 0 1 .015-.588c.07-.327-.007-.537-.238-.727-.188-.156-.426-.199-.689-.199a.6.6 0 0 1-.254-.078.253.253 0 0 1-.114-.358 1 1 0 0 1 .192-.21c.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.392.451.462.576.685.915.176.264.336.536.446.848.066.194-.02.353-.25.45"/></svg>',
   },
   qwen: {
-    label: '通义千问', descKey: 'pq.qwenDesc',
+    label: '通义千问', descKey: 'guide.qwenDesc',
     protocol: 'oai', apibase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen3.6-max-preview', name: '通义千问',
     keyUrl: 'https://bailian.console.aliyun.com/?apiKey=1',
@@ -4164,6 +4134,17 @@ function renderModelMenu(menuEl) {
     const label = (isActive && p.kind === 'mixin' && selectedName) ? selectedName : modelDisplayName(p);
     return `<div class="ga-menu-item${isActive}" data-llmno="${no}">${escapeHtml(label || '')}</div>`;
   });
+  /* V1: 功能组仅挂主聊天菜单（指挥家菜单保持纯模型列表）——快速接入 + 配置（原侧栏推广卡/配置脚收纳于此） */
+  if (menuEl === modelMenu) {
+    const ic = (n) => (window.gaIcon ? window.gaIcon(n, 'ic') : '');
+    const quick = (fn, name) => `<div class="ga-menu-item fn" data-fn="${fn}">${ic('lightning')}<span>${escapeHtml(name)} · ${escapeHtml(t('menu.quickSuffix'))}</span></div>`;
+    rows.push('<div class="ga-menu-sep"></div>');
+    rows.push(quick('quick-deepseek', 'DeepSeek'));
+    rows.push(quick('quick-qwen', '通义千问'));
+    if (gaTokenPortalAvailable) rows.push(quick('quick-ga-token', 'GA Token'));
+    rows.push('<div class="ga-menu-sep"></div>');
+    rows.push(`<div class="ga-menu-item fn" data-fn="settings">${ic('gear')}<span>${escapeHtml(t('foot.settings'))}</span></div>`);
+  }
   menuEl.innerHTML = rows.join('');
   applyI18n();
 }
@@ -4195,6 +4176,15 @@ function bindModelMenuItemClick(menuEl, onSelect) {
     e.stopPropagation();
     const item = e.target.closest('.ga-menu-item');
     if (!item) return;
+    /* V1: 功能行（快速接入/配置）在 llmno 解析之前拦截 */
+    if (item.dataset.fn) {
+      const fn = item.dataset.fn;
+      closeAllModelMenus();
+      if (fn === 'settings') openSettings();
+      else if (fn === 'quick-ga-token') startGaTokenPortalFlow();
+      else if (fn.startsWith('quick-')) openAddModelFormForProvider(fn.slice(6));
+      return;
+    }
     const no = parseInt(item.dataset.llmno, 10);
     if (Number.isNaN(no)) return;
     const p = (state.modelProfiles || []).find(x => (x.id ?? 0) === no);
@@ -4996,7 +4986,7 @@ const tokResetBtn=document.getElementById('tok-reset');
 if(tokResetBtn)tokResetBtn.addEventListener('click',()=>{if(fpSince)fpSince.clear();if(fpUntil)fpUntil.clear();_tokPage=0;loadTokenPage();});
 
 /* ─── Token trend chart ─── */
-nav.addEventListener('click',(e)=>{const item=e.target.closest('.nav-item');if(item&&item.dataset.page==='token'){if(_tokTab==='conductor')loadConductorTokens();else loadTokenPage();}if(item&&item.dataset.page==='services')refreshServicesPanel();});
+/* V1(GV0-B1): token/services 数据加载已迁入 gaGoPage（nav 缩编后两页无 nav 项，原 nav click 触发链失效） */
 /* ═══════════════ 自定义预设 ═══════════════ */
 const CP_KEY = 'ga_custom_presets';
 const HB_KEY = 'ga_hidden_builtins';
@@ -5663,7 +5653,7 @@ if (chanConfigSave) {
   chanConfigSave.addEventListener('click', saveChannelMykey);
 }
 
-/* ═══════════════ 状态面板（复用 ServiceManager + 启停/日志） ═══════════════ */
+/* ═══════════════ 状态面板（复用后端服务管理器 + 启停/日志） ═══════════════ */
 const statusListEl = document.getElementById('status-list');
 const BRIDGE_SERVICE_ID = '__bridge__';
 const EXTRA_SERVICE_IDS = new Set(['frontends/conductor.py', 'reflect/scheduler.py']);
@@ -5903,7 +5893,6 @@ if (chanListEl) {
 /* ═══════════════ 启动 ═══════════════ */
 (async () => {
 await loadSessions();
-pqReevalDefault();  // U4: 会话就绪后重估快速接入卡默认折叠（GU0-S4）
 applyAppearance(appearance, plainUi, { persist: false });
 applyTheme(theme, { persist: false });
 initChatFontStepper();
