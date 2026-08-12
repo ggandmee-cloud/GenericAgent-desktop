@@ -2608,11 +2608,62 @@ function sortedSessions() {
   return [...state.sessions.values()].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
-    return (b.lastActiveTs || 0) - (a.lastActiveTs || 0);
+    return normTs(b.lastActiveTs) - normTs(a.lastActiveTs);
   });
 }
+/* U2: 桥接 /sessions 返回秒级浮点时间戳、本地写入是 Date.now() 毫秒（UX 评审 D7 混单位缺陷）。
+   排序与显示一律经 normTs 归一化到毫秒；不回写 sess 字段，保持来源原值。
+   阈值 1e12：按秒解释是 33658 年、按毫秒解释是 2001 年，二义不可能。 */
+const normTs = (ts) => !ts ? 0 : (ts < 1e12 ? ts * 1000 : ts);
+// 裸时长「3s / 3m 2s / 1h 4m」——formatTaskElapsed 带「已运行」前缀，不适合列表 meta 复合文案
+function formatDur(ms) {
+  const v = Number(ms);
+  if (!Number.isFinite(v) || v < 0) return '';
+  const sec = Math.max(1, Math.round(v / 1000));
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60), s = sec % 60;
+  if (min < 60) return `${min}m ${s}s`;
+  const hr = Math.floor(min / 60), m = min % 60;
+  return `${hr}h ${m}m`;
+}
+// 相对时间分桶（UX_SPEC §3）：刚刚 / N 分钟前 / 今天 HH:MM / 昨天 / N 天前 / M月D日 / 跨年全写
+function relTime(ms) {
+  if (!ms) return '';
+  const now = new Date(), d = new Date(ms);
+  const diff = now - d;
+  if (diff < 60e3) return t('time.justNow');
+  if (diff < 3600e3) return t('time.minAgo', { n: Math.floor(diff / 60e3) });
+  const day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (ms >= day0) return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (ms >= day0 - 86400e3) return t('time.yesterday');
+  if (ms >= day0 - 6 * 86400e3) return t('time.daysAgo', { n: Math.ceil((day0 - ms) / 86400e3) });
+  const zh = lang === 'zh';
+  if (d.getFullYear() === now.getFullYear())
+    return zh ? `${d.getMonth() + 1}月${d.getDate()}日` : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return zh ? `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日` : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+// 分组：置顶 / 今天 / 昨天 / 近 7 天 / 更早（仅无搜索词时插组头；按既有排序序列切段，排序规则不变）
+function convGroupKey(sess, nowMs) {
+  if (sess.pinned) return 'Pinned';
+  const ts = normTs(sess.lastActiveTs);
+  if (!ts) return 'Earlier';
+  const n = new Date(nowMs);
+  const day0 = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
+  if (ts >= day0) return 'Today';
+  if (ts >= day0 - 86400e3) return 'Yesterday';
+  if (ts >= day0 - 6 * 86400e3) return 'Week';
+  return 'Earlier';
+}
+// 行 meta 状态机（UX_SPEC §3）：运行中 · mm:ss ＞ 空闲相对时间（U3 在中间插「已完成」态）
+function convMetaText(sess) {
+  const r = state.runtime.get(sess.id);
+  if (r && r.busy) return t('conv.runningFor', { t: r.taskStartedAt ? formatDur(Date.now() - r.taskStartedAt) : '…' });
+  return relTime(normTs(sess.lastActiveTs));
+}
+let _convListSig = '';
 function renderSessionList() {
-  convListEl.innerHTML = '';
+  // 改名编辑态不整表重画（会销毁输入框）；finish() 摘除输入框并破签名后重入
+  if (convListEl.querySelector('.ci-rename-input')) return;
   const query = (searchInput ? searchInput.value : '').trim().toLowerCase();
   const all = sortedSessions();
   const filtered = query
@@ -2622,25 +2673,66 @@ function renderSessionList() {
         return title.includes(query) || hasMsg;
       })
     : all;
-  if (filtered.length === 0) {
+  const now = Date.now();
+  const rows = filtered.map(s => {
+    const r = state.runtime.get(s.id);
+    return { s, busy: !!(r && r.busy), g: query ? '' : convGroupKey(s, now) };
+  });
+  /* 防抖签名（UX_SPEC §3）：只含结构性状态，时间文本由 ticker 原位刷新（分钟桶捕捉数据变更）。
+     签名不变直接跳过 —— 消掉 poll 每拍的 innerHTML 全量重建（评审 D8）。 */
+  const sig = JSON.stringify([query, state.activeId, currentPage === 'chat',
+    rows.map(x => [x.s.id, !!x.s.pinned, x.busy, displayTitle(x.s), x.g, Math.floor(normTs(x.s.lastActiveTs) / 60e3)])]);
+  if (sig === _convListSig) { syncConvTicker(); return; }
+  _convListSig = sig;
+  convListEl.innerHTML = '';
+  if (rows.length === 0) {
     const e = document.createElement('div');
-    e.className = 'conv-empty'; e.textContent = t('conv.emptyList');
-    convListEl.appendChild(e); return;
+    e.className = 'conv-empty'; e.textContent = t(query ? 'conv.emptySearch' : 'conv.emptyList');
+    convListEl.appendChild(e); syncConvTicker(); return;
   }
-  for (const sess of filtered) {
-    const r = state.runtime.get(sess.id);
-    const busy = !!(r && r.busy);
+  let lastG = null;
+  for (const { s: sess, busy, g } of rows) {
+    if (g && g !== lastG) {
+      const h = document.createElement('div');
+      h.className = 'conv-group';
+      h.textContent = t('conv.group' + g);
+      convListEl.appendChild(h);
+      lastG = g;
+    }
     const item = document.createElement('div');
-    item.className = 'conv-item' + (currentPage === 'chat' && sess.id === state.activeId ? ' active' : '') + (busy ? '' : ' idle');
+    item.className = 'conv-item' + (currentPage === 'chat' && sess.id === state.activeId ? ' active' : '') + (busy ? ' busy' : '');
     item.dataset.id = sess.id;
     const pinSvg = sess.pinned ? GA_ICON('pushPinSimple', 'ci-pin') : '';
     item.innerHTML =
-      `<span class="ci-dot"></span><div class="ci-main">` +
+      (busy ? '<span class="ci-dot"></span>' : '') +
+      `<div class="ci-main">` +
       `<div class="ci-title">${pinSvg}${escapeHtml(displayTitle(sess))}</div>` +
-      `<div class="ci-meta">${busy ? t('status.running') : t('status.idle')}</div></div>` +
+      `<div class="ci-meta">${escapeHtml(convMetaText(sess))}</div></div>` +
       `<button class="ci-more" data-no-tooltip aria-label="${escapeHtml(t('common.more'))}">${GA_ICON('dotsThreeVertical')}</button>`;
     convListEl.appendChild(item);
   }
+  syncConvTicker();
+}
+/* U2 ticker（UX_SPEC §3）：全局单 interval，有 busy 行才活跃；每拍只改 .ci-meta 的 textContent，
+   不重建任何节点。慢速轮（60s）让空闲行相对时间不陈旧，同样只原位改文本。 */
+let _convTickId = null, _convSlowId = null;
+function tickConvMetas(busyOnly) {
+  convListEl.querySelectorAll('.conv-item').forEach(item => {
+    const sess = state.sessions.get(item.dataset.id);
+    if (!sess) return;
+    const r = state.runtime.get(sess.id);
+    if (busyOnly && !(r && r.busy)) return;
+    const meta = item.querySelector('.ci-meta');
+    if (!meta) return;
+    const txt = convMetaText(sess);
+    if (meta.textContent !== txt) meta.textContent = txt;
+  });
+}
+function syncConvTicker() {
+  const anyBusy = [...state.runtime.values()].some(r => r && r.busy);
+  if (anyBusy && !_convTickId) _convTickId = setInterval(() => tickConvMetas(true), 1000);
+  else if (!anyBusy && _convTickId) { clearInterval(_convTickId); _convTickId = null; }
+  if (!_convSlowId) _convSlowId = setInterval(() => tickConvMetas(false), 60000);
 }
 if (searchInput) searchInput.addEventListener('input', () => renderSessionList());
 async function ensureBridgeSession(sess) {
@@ -2671,7 +2763,7 @@ function displayTitle(sess) {
     const sm = /<summary>([\s\S]*?)<\/summary>/i.exec(txt);
     if (sm && sm[1].trim()) {
       const line = sm[1].trim().split('\n')[0].trim();
-      if (line) return line.length > 60 ? line.slice(0, 60) + '…' : line;
+      if (line) return line.length > 80 ? line.slice(0, 80) + '…' : line;  // U2: 两行标题有空间, 60→80
     }
   }
   // 2) 兜底:首条用户消息纯文本(去附件占位符)
@@ -2679,7 +2771,7 @@ function displayTitle(sess) {
     if (!m || m.role !== 'user') continue;
     const raw = typeof m.content === 'string' ? m.content : (m.display || '');
     const clean = stripAttachPlaceholders(raw).trim();
-    if (clean) return clean.length > 40 ? clean.slice(0, 40) + '…' : clean;
+    if (clean) return clean.length > 80 ? clean.slice(0, 80) + '…' : clean;  // U2: 两行标题有空间, 40→80
   }
   return t('conv.defaultTitle');
 }
@@ -2878,6 +2970,10 @@ convMenu.addEventListener('click', (e) => {
         history.forEach(h => { if (h.sessionId === sid) { h.title = val; changed = true; } });
         if (changed) tokSaveHistory(history);
       }
+      // U2: 先摘输入框再破签名——renderSessionList 对改名态有重画守卫，不摘会跳过重建；
+      // 取消改名时签名可能与改名前一致，不破签名该行会停留在被 replaceWith 掏空的状态
+      inp.remove();
+      _convListSig = '';
       renderSessionList();
     };
     inp.addEventListener('keydown', e => {

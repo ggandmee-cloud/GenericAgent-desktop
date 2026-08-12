@@ -1367,18 +1367,29 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   -ms-overflow-style:none;
 }
 .conv-list::-webkit-scrollbar{ display:none; width:0; height:0; }
-.conv-empty{ color:var(--muted2); font-size:12px; }
-.conv-item{ display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:var(--r-xs); cursor:pointer; transition:background .15s; }
+.conv-empty{ color:var(--muted2); font-size:12px; padding:8px 10px; }
+/* U2: 日期分组头（置顶/今天/昨天/近7天/更早），纯装饰性文本 */
+.conv-group{
+  font-size:11px; font-weight:500; color:var(--muted2);
+  padding:12px 10px 3px; user-select:none; flex:0 0 auto;
+}
+.conv-group:first-child{ padding-top:4px; }
+.conv-item{ display:flex; align-items:flex-start; gap:9px; padding:9px 10px; border-radius:var(--r-xs); cursor:pointer; transition:background .15s; flex:0 0 auto; }
 .conv-item:hover{ background:var(--surface3); }
 .conv-item.active{ background:var(--surface3); box-shadow:inset 2px 0 0 var(--acc); }
 .conv-item.renaming{
   cursor:default;
   background:var(--surface2);
 }
-.ci-dot{ width:7px; height:7px; border-radius:50%; background:var(--ok); flex:0 0 auto; }
-.conv-item.idle .ci-dot{ background:var(--dot-idle); }
+/* U2: 状态点仅运行中渲染（空闲不显，降噪）；顶到标题首行光学中心 */
+.ci-dot{ width:7px; height:7px; border-radius:50%; background:var(--ok); flex:0 0 auto; margin-top:6px; }
 .ci-main{ flex:1; min-width:0; }
-.ci-title{ font-size:13px; font-weight:500; color:var(--txt-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* U2: 标题两行 clamp（13.5px/1.4），长 URL 类标题可断行 */
+.ci-title{
+  font-size:13.5px; font-weight:500; line-height:1.4; color:var(--txt-strong);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; overflow-wrap:anywhere; white-space:normal;
+}
 .ci-rename-input{
   display:block; width:100%; min-width:0; height:24px; box-sizing:border-box;
   margin:-3px 0 -2px; padding:0 7px;
@@ -1396,7 +1407,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
 }
 .ci-rename-input::selection{ background:color-mix(in srgb, var(--accent) 28%, transparent); }
 .ci-pin{ width:14px; height:14px; color:var(--accent); margin-right:3px; vertical-align:-3px; flex:0 0 auto; display:inline-block; }
-.ci-meta{ font-size:11px; color:var(--muted); margin-top:2px; }
+.ci-meta{ font-size:11px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums; }
 .ci-more{
   flex:0 0 auto; width:26px; height:26px; border:none; background:transparent;
   color:var(--txt-3); border-radius:var(--r-full); cursor:pointer;
