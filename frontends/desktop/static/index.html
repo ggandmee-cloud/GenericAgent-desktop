@@ -48,14 +48,27 @@
 
 <div id="app">
 
-  <!-- W3.5v2: 自绘标题带（Boss 2026-08-13 二拍: 开关放原生标题栏位）——
-       壳侧 titleBarStyle:Overlay + hiddenTitle, 红绿灯悬浮于此带; data-tauri-drag-region 保窗口拖拽 -->
-  <div id="titlebar" data-tauri-drag-region>
-    <span class="tb-lights-pad" data-tauri-drag-region aria-hidden="true"></span>
-    <button type="button" class="sb-icon-btn sb-toggle" id="sb-toggle" data-i18n-title="sb.toggle">
-      <span data-ga-icon="sidebarSimple"></span>
-    </button>
-    <span class="tb-title" id="tb-title" data-tauri-drag-region></span>
+  <!-- W3.5v3: 自绘标题带分段（Boss 2026-08-13 三拍: 侧栏顶与对话区顶分开, 标题不穿侧栏）——
+       tb-side 与侧栏同宽同色(红绿灯+开关), tb-main 承载会话标题+置顶/改名钮;
+       壳侧 titleBarStyle:Overlay + hiddenTitle, data-tauri-drag-region 保窗口拖拽 -->
+  <div id="titlebar">
+    <div class="tb-side" data-tauri-drag-region>
+      <span class="tb-lights-pad" data-tauri-drag-region aria-hidden="true"></span>
+      <button type="button" class="sb-icon-btn sb-toggle" id="sb-toggle" data-i18n-title="sb.toggle">
+        <span data-ga-icon="sidebarSimple"></span>
+      </button>
+    </div>
+    <div class="tb-main" data-tauri-drag-region>
+      <span class="tb-title" id="tb-title" data-tauri-drag-region></span>
+      <span class="tb-actions" id="tb-actions" hidden>
+        <button type="button" class="sb-icon-btn ch-pin" id="ch-pin">
+          <span data-ga-icon="pushPinSimple"></span>
+        </button>
+        <button type="button" class="sb-icon-btn ch-rename" id="ch-rename" data-i18n-title="ctx.rename">
+          <span data-ga-icon="pencilSimple"></span>
+        </button>
+      </span>
+    </div>
   </div>
 
   <div class="body">
@@ -125,18 +138,13 @@
         <section class="page active page--chat-ui" data-page="chat">
           <div class="chat-shell">
           <div class="chat-panel">
-          <!-- W1: 会话头（有消息才显示；flex 常规流子项，不入 msg-area 滚动几何——UX_SPEC §W1.1 红线） -->
+          <!-- W3.5v3: 会话头变身「最近用户消息」pin 条（标题只留标题栏, pin/改名钮迁 tb-actions;
+               仍为 flex 常规流子项, 不入 msg-area 滚动几何——UX_SPEC §W1.1 红线不变） -->
           <div class="chat-head" id="chat-head" hidden>
-            <span class="ch-title" id="ch-title"></span>
-            <span class="ch-meta" id="ch-meta"></span>
-            <span class="ch-actions">
-              <button type="button" class="sb-icon-btn ch-pin" id="ch-pin">
-                <span data-ga-icon="pushPinSimple"></span>
-              </button>
-              <button type="button" class="sb-icon-btn ch-rename" id="ch-rename" data-i18n-title="ctx.rename">
-                <span data-ga-icon="pencilSimple"></span>
-              </button>
-            </span>
+            <button type="button" class="ch-lastmsg" id="ch-lastmsg">
+              <span class="ch-lm-ic" data-ga-icon="chatTeardropText"></span>
+              <span class="ch-lm-text" id="ch-lm-text"></span>
+            </button>
           </div>
           <div class="msg-area">
             <div class="chat-start">

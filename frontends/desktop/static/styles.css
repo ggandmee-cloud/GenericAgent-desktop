@@ -153,6 +153,7 @@ html{ --chat-font:13px; }
 body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; font-family:var(--font-sans); }
 
 #app{
+  --sb-w:280px;  /* W3.5v3: 侧栏宽提升为变量——.sidebar 与 .tb-side 双引用, 拖拽/折叠同步 */
   width:100vw; height:100vh; background:var(--bg);
   overflow:hidden; display:flex; flex-direction:column;
 }
@@ -492,7 +493,7 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 
 /* ============ ① 侧边栏（立体卡片 · 美术重点）============ */
 .sidebar{
-  width:280px; background:var(--panel);
+  width:var(--sb-w); background:var(--panel);
   border-right:1px solid var(--divider); border-radius:0; box-shadow:none;
   overflow:hidden; display:flex; flex-direction:column;
   padding:var(--shell-pad) 12px 12px;
@@ -517,24 +518,46 @@ html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
 }
 .sb-icon-btn:hover{ opacity:1; color:var(--txt); background:var(--surface3); }
 .sb-icon-btn svg{ width:18px; height:18px; transition:transform .2s; }  /* W2.1: 图标 16→18 提高辨识 */
-/* W3.5v2: 自绘标题带（Boss 2026-08-13 二拍: 开关放原生标题栏位, 对照参考截图）
-   壳侧 Overlay+hiddenTitle 使红绿灯悬浮于带上; 带=拖拽区, 开关+会话名内嵌;
-   高 32px 使 28px 钮与红绿灯纵心近似对齐(原生灯心距顶约 14px, 带心 16px) */
+/* W3.5v3: 自绘标题带分段（Boss 三拍: 侧栏顶与对话区顶分开, 标题不穿侧栏）
+   tb-side=侧栏列顶(同宽同色, 红绿灯+开关), tb-main=内容区顶(标题+会话操作钮);
+   高 32px 使 28px 钮与红绿灯纵心近似对齐(原生灯心距顶约 14px, 带心 16px);
+   分界=tb-side 右缘 hairline 与侧栏右缘同 x 连续; 底线只画 tb-main 段(侧栏列顶不横断, 对照参考) */
 #titlebar{
   flex:0 0 32px; height:32px;
-  display:flex; align-items:center; gap:8px;
-  padding:0 12px 0 84px;  /* 左让红绿灯(≈62px)+呼吸位 */
-  background:var(--panel);
-  border-bottom:1px solid var(--divider);
+  display:flex; align-items:stretch;
   -webkit-user-select:none; user-select:none;
+}
+.tb-side{
+  flex:0 0 var(--sb-w); box-sizing:border-box; min-width:0;
+  display:flex; align-items:center; gap:8px;
+  padding-left:84px;  /* 左让红绿灯(≈62px)+呼吸位 */
+  background:var(--panel);
+  border-right:1px solid var(--divider);
+  transition:flex-basis .2s, background .2s;
+}
+/* 折叠态: 侧栏列消失, tb-side 收为最小宽(灯+开关), 分界线与面色随之退场 */
+#app:has(.body.sb-collapsed) .tb-side{
+  flex-basis:124px; background:var(--bg); border-right-color:transparent;
+}
+.tb-main{
+  flex:1; min-width:0;
+  display:flex; align-items:center; gap:8px;
+  padding:0 12px;
+  background:var(--bg);
+  border-bottom:1px solid var(--divider);
 }
 .tb-lights-pad{ display:none; }  /* 红绿灯占位并入 padding-left; 留节点作非 Tauri 环境探测/未来自定位 */
 .tb-title{
+  flex:0 1 auto; min-width:0;
   font-size:12.5px; color:var(--txt-2); font-weight:500;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  min-width:0;
 }
-html[data-appearance="dark"] #titlebar{ border-bottom-color:var(--line); }
+.tb-actions{ display:inline-flex; gap:2px; flex:0 0 auto; }
+.tb-actions[hidden]{ display:none; }
+/* 拖拽期间禁双消费面过渡, 分界线跟手（W3.5v3, JS bindResize 挂类） */
+#app.sb-dragging .sidebar, #app.sb-dragging .tb-side{ transition:none; }
+html[data-appearance="dark"] .tb-side{ border-right-color:var(--line); }
+html[data-appearance="dark"] .tb-main{ border-bottom-color:var(--line); }
 
 .ga-num{
   font-family:var(--font-num);
@@ -769,25 +792,34 @@ html[data-appearance="dark"] #titlebar{ border-bottom-color:var(--line); }
   box-sizing:border-box;
 }
 /* W1(§W1.1): 会话头——chat-panel 常规流子项（flex:0 0 auto），不入 msg-area 滚动几何 */
+/* W3.5v3: 会话头=「最近用户消息」pin 条（标题/操作钮迁标题栏; 常规流子项滚动几何红线不变）
+   press 走 X 章行族底色制(宽条缩放怪异, X1.2 总则) */
 .chat-head{
   flex:0 0 auto;
-  display:flex; align-items:center; gap:8px;
+  display:flex; align-items:center;
   width:100%; max-width:var(--chat-col-w);
-  margin:0 auto; padding:2px 0 0;
+  margin:0 auto; padding:6px 0 0;
   box-sizing:border-box;
-  min-height:32px;
 }
 .chat-head[hidden]{ display:none; }
-.ch-title{
-  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  font-size:13.5px; font-weight:600; color:var(--txt);
-  cursor:default;
+.ch-lastmsg{
+  display:flex; align-items:center; gap:8px;
+  flex:1; min-width:0;
+  padding:7px 14px;
+  background:var(--surface2); border:1px solid var(--line); border-radius:var(--r-md);
+  cursor:pointer; text-align:left;
+  font-size:12.5px; font-family:var(--font-sans); color:var(--txt-2);
+  transition:background var(--dur-2), border-color var(--dur-2);
 }
-.ch-meta{ flex:0 0 auto; font-size:11.5px; color:var(--muted2); }
-.ch-actions{ margin-left:auto; display:inline-flex; gap:2px; }
-.chat-head .sb-icon-btn{ opacity:0; transition:opacity .15s; }
-.chat-head:hover .sb-icon-btn, .chat-head .sb-icon-btn:focus-visible{ opacity:1; }
-.chat-head .ch-pin.on{ opacity:1; color:var(--accent); }
+.ch-lastmsg:hover{ background:var(--surface3); }
+.ch-lastmsg:active:hover{ background:var(--surface-press); }
+.ch-lm-ic{ width:14px; height:14px; flex:0 0 auto; opacity:.55; }
+.ch-lm-ic svg{ width:14px; height:14px; display:block; }
+.ch-lm-text{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 标题栏内的会话操作钮: 常显弱化, hover 提亮（迁位后不再依赖 chat-head hover 面） */
+.tb-actions .sb-icon-btn{ opacity:.55; }
+.tb-actions .sb-icon-btn:hover, .tb-actions .sb-icon-btn:focus-visible{ opacity:1; }
+.tb-actions .ch-pin.on{ opacity:1; color:var(--accent); }
 /* V2: 回顶回底浮钮（竖排玻璃胶囊）——锚 composer-anchor 顶沿上方，composer 增高自动抬升（GV2-S2） */
 .scroll-nav{
   position:absolute; right:14px; bottom:calc(100% + 10px); z-index:30;

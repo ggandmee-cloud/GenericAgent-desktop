@@ -1627,7 +1627,8 @@ function bindResize(handle, panel, dir, min, max) {
   handle.addEventListener('mousedown', (e) => {
     dragging = true; startX = e.clientX; startW = panel.offsetWidth;
     handle.classList.add('dragging');
-    panel.style.transition = 'none';  // 拖拽期间禁用 transition，避免宽度动画延迟
+    // 拖拽期间禁 transition（侧栏+标题带 tb-side 双消费 --sb-w, 统一走类禁, W3.5v3）
+    document.getElementById('app').classList.add('sb-dragging');
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     e.preventDefault();
@@ -1635,14 +1636,14 @@ function bindResize(handle, panel, dir, min, max) {
   document.addEventListener('mousemove', (e) => {
     if (!dragging) return;
     const w = Math.min(max, Math.max(min, startW + dir * (e.clientX - startX)));
-    panel.style.width = w + 'px';
-    panel.style.flex = '0 0 ' + w + 'px';
+    // W3.5v3: 写共享变量——.sidebar 与 #titlebar .tb-side 双消费, 拖拽时标题带分界同步
+    document.getElementById('app').style.setProperty('--sb-w', w + 'px');
   });
   document.addEventListener('mouseup', () => {
     if (!dragging) return;
     dragging = false;
     handle.classList.remove('dragging');
-    panel.style.transition = '';  // 恢复 CSS transition（按钮折叠动画仍生效）
+    document.getElementById('app').classList.remove('sb-dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
   });
@@ -2922,26 +2923,35 @@ function renderSessionList() {
   syncChatHead();       // W1: 全出口挂接（标题变更/置顶/completed 元信息汇聚点）
   renderRecentStrip();
 }
-/* W1 会话头（UX_SPEC §W1.1）：标题/相对时间/置顶态原位刷新——renderSessionList 全出口 + refreshEmptyState 挂调，
-   不新增轮询（标题变更必经列表重画，相对时间搭 60s 慢轮）。显隐条件与 refreshEmptyState 同源。 */
+/* W3.5v3 会话头（三拍重构）：标题只显标题栏（syncDocTitle→tb-title），
+   chat-head 变身「最近用户消息」pin 条，pin/改名钮迁 tb-actions（id 不变绑定零改）。
+   调用面不变：renderSessionList 全出口 + refreshEmptyState，不新增轮询。 */
 function syncChatHead() {
-  syncDocTitle();  // W3+: 窗口标题跟随会话名——syncChatHead 全出口覆盖切换/改名/poll 改题
-  const head = document.getElementById('chat-head');
-  if (!head) return;
+  syncDocTitle();  // 窗口标题+标题带跟随会话名——全出口覆盖切换/改名/poll 改题
   const sess = activeSess();
-  const has = !!(sess && sess.messages && sess.messages.length > 0);
-  head.hidden = !has;
-  if (!has) return;
-  const title = displayTitle(sess);
-  const titleEl = document.getElementById('ch-title');
-  if (titleEl && titleEl.textContent !== title) {
-    titleEl.textContent = title;
-    setTooltip(titleEl, title);
-    titleEl.setAttribute('aria-label', title);  // setTooltip 的 aria 守卫只写一次，标题变更须强制跟新
+  const head = document.getElementById('chat-head');
+  if (head) {
+    // pin 条内容=最近一条 user 消息（display 优先——附件占位已清洗口径与复制一致）
+    let lastTxt = '';
+    if (sess && sess.messages && sess.messages.length) {
+      for (let i = sess.messages.length - 1; i >= 0; i--) {
+        const m = sess.messages[i];
+        if (m.role === 'user') {
+          lastTxt = stripAttachPlaceholders((typeof m.display === 'string' && m.display.length) ? m.display : (m.content || '')).trim();
+          break;
+        }
+      }
+    }
+    head.hidden = !lastTxt;
+    if (lastTxt) {
+      const el = document.getElementById('ch-lm-text');
+      if (el && el.textContent !== lastTxt) el.textContent = lastTxt;
+    }
   }
-  const metaEl = document.getElementById('ch-meta');
-  const meta = relTime(normTs(sess.lastActiveTs));
-  if (metaEl && metaEl.textContent !== meta) metaEl.textContent = meta;
+  // 标题栏操作钮（有活跃会话即显; 钮态照旧）
+  const actions = document.getElementById('tb-actions');
+  if (actions) actions.hidden = !sess;
+  if (!sess) return;
   const pinBtn = document.getElementById('ch-pin');
   if (pinBtn) {
     pinBtn.classList.toggle('on', !!sess.pinned);
@@ -3264,14 +3274,20 @@ function beginRenameSession(sess) {
   });
   inp.addEventListener('blur', () => finish(true));
 }
-/* W1: 会话头操作绑定（置顶/改名与 conv-menu 同函数，双击标题=改名） */
+/* W3.5v3: 标题栏会话操作绑定（置顶/改名与 conv-menu 同函数; 双击标题=改名保留在 tb-title）；
+   pin 条点击=回底直达最新往来（用户主动动作, V2 滚动写者白名单内——与 sn-down 同语义） */
 {
   const chPin = document.getElementById('ch-pin');
   const chRename = document.getElementById('ch-rename');
-  const chTitle = document.getElementById('ch-title');
+  const tbTitle = document.getElementById('tb-title');
   chPin?.addEventListener('click', () => { const s = activeSess(); if (s) togglePinSession(s); });
   chRename?.addEventListener('click', () => { const s = activeSess(); if (s) beginRenameSession(s); });
-  chTitle?.addEventListener('dblclick', () => { const s = activeSess(); if (s) beginRenameSession(s); });
+  tbTitle?.addEventListener('dblclick', () => { const s = activeSess(); if (s) beginRenameSession(s); });
+  document.getElementById('ch-lastmsg')?.addEventListener('click', () => {
+    const sn = document.getElementById('sn-down');
+    if (sn) { sn.classList.remove('done'); }
+    pinBottom();
+  });
 }
 convMenu.addEventListener('click', (e) => {
   e.stopPropagation();
