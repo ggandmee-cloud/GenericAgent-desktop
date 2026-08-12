@@ -702,11 +702,10 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   display:flex; flex-direction:column;
   gap:var(--chat-stack-gap);
   box-sizing:border-box;
-  position:relative;  /* V2: 回顶回底浮钮的定位锚 */
 }
-/* V2: 回顶回底浮钮（竖排玻璃胶囊，composer 上方右下角） */
+/* V2: 回顶回底浮钮（竖排玻璃胶囊）——锚 composer-anchor 顶沿上方，composer 增高自动抬升（GV2-S2） */
 .scroll-nav{
-  position:absolute; right:14px; bottom:8px; z-index:30;
+  position:absolute; right:14px; bottom:calc(100% + 10px); z-index:30;
   display:none; flex-direction:column; gap:6px;
 }
 .scroll-nav.on{ display:flex; }

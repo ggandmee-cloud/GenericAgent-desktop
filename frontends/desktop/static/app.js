@@ -2230,6 +2230,8 @@ function renderAllMessages(sess) {
   syncAskUserUi();
   // badge 恢复在 pollSession finally 中执行（此时 messages 已通过异步加载填充）
   refreshEmptyState(sess); scrollBottom(true);
+  // 切会话/重渲染后浮钮显隐没有 scroll 事件兜底（0→0 不触发），须手动刷新（GV2-B2，手机版进会话同款）
+  requestAnimationFrame(() => requestAnimationFrame(() => updateScrollNav()));
 }
 // 遍历消息对，用 ts 差值恢复 badge；对运行中任务恢复 taskStartedAt
 function restoreElapsedBadges(sess, box) {
@@ -2344,8 +2346,9 @@ if (snUp) snUp.addEventListener('click', () => { stick = false; pinned = false; 
 if (snDown) snDown.addEventListener('click', () => { snDown.classList.remove('done'); pinBottom(); });
 msgArea.addEventListener('scroll', () => {
   const nb = isNearBottom();
-  // 仅锚点离开顶带（=用户拖走）且过 800ms 静默期才退出阅读态；短轮次天然 nearBottom 不误伤（手机版同款）
-  if (pinned && Date.now() - _lastPin > 800 && !pinElAtTop()) pinned = false;
+  // 仅锚点离开顶带（=用户拖走）且过 800ms 静默期才退出阅读态；短轮次天然 nearBottom 不误伤
+  // 与手机版差异：桌面键盘滚动/overlay 滚动条只走此兜底，须同步作废令牌，否则 RO 重锚会拽回（GV2-B1）
+  if (pinned && Date.now() - _lastPin > 800 && !pinElAtTop()) { pinned = false; _pinSeq++; }
   stick = nb && !pinned;
   updateScrollNav();
 });
@@ -2653,6 +2656,9 @@ function setBusy(sess, busy, opts = {}) {
   if (wasBusy && !busy && !opts.fromError && !(isActive(sess) && currentPage === 'chat')) {
     markUnseenDone(sess, r.taskStartedAt ? (r.taskEndedAt || Date.now()) - r.taskStartedAt : null);
   }
+  /* V2: 任务起止刷新浮钮显隐——流式增高不产生 scroll 事件，显隐会滞后（GV2-B2/S4，手机版任务起止同款）。
+     须在 done 点亮之前调：updateScrollNav 的 !down 摘 done 不得吃掉下面的强制显形。 */
+  if (isActive(sess) && currentPage === 'chat') updateScrollNav();
   /* V2(§V2.4): 活跃会话在聊天页收尾且用户顶置阅读中——不抢滚，点亮回底钮（手机版 onTaskDone 三连同款：
      done 类 + 强制显形 + 容器亮，不依赖 600px 显隐规则）；点击回底/自然贴底(updateScrollNav !down)摘除。 */
   if (wasBusy && !busy && !opts.fromError && isActive(sess) && currentPage === 'chat' && pinned && snDown) {
