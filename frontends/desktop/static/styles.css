@@ -2829,8 +2829,35 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
 .copied svg, .code-block-copy.copied, .latex-copy-btn.copied{ animation:gaPop var(--dur-3) var(--ease-in-soft); }
 .ch-pin.on svg{ animation:gaPop var(--dur-3) var(--ease-in-soft); }
 
+/* ============ §Y 对标 Cursor 交互动效（UX_SPEC v5.1, Boss 2026-08-13）============ */
+/* Y1.1 消息入场——opacity-only（GY0-B1: alignTop 读 rect 差量, transform 会使钉顶漂移 6px, 严禁位移） */
+@keyframes gaMsgIn{ from{ opacity:0; } }
+.msg-enter{ animation:gaMsgIn var(--dur-3) var(--ease-in-soft); }
+/* Y1.2 弹层退场（.closing 由 gaCloseModal 挂; 与入场 :not([hidden]) 规则同特异性, 后写胜出） */
+@keyframes gaModalOut{ to{ opacity:0; } }
+@keyframes gaCardOut{ to{ opacity:0; transform:scale(.98); } }
+.modal.closing .modal-backdrop{ animation:gaModalOut var(--dur-2) ease-out both; }
+.modal.closing .modal-card{ animation:gaCardOut var(--dur-2) ease-out both; }
+.lightbox.closing{ animation:gaModalOut var(--dur-2) ease-out both; }
+/* Y1.3 折叠展开内容淡入——只挂用户 toggle 的一次性类（GY0-B4: [open] 裸选择器会被流式每 tick 重建重放） */
+@keyframes gaFadeUp{ from{ opacity:0; transform:translateY(4px); } }
+.fold.fold-opened > :not(summary){ animation:gaFadeUp var(--dur-3) var(--ease-in-soft); }
+/* Y1.4 页面切换轻 fade（opacity-only 防 transform containing block 波及页内定位; 开屏首帧放一次已表态） */
+@keyframes gaPageIn{ from{ opacity:0; } }
+.page.active{ animation:gaPageIn var(--dur-2) ease-out; }
+/* Y1.5 拖放投放高亮——入场淡入 + 虚线边框呼吸（功能性循环, reduced 全局钉死后停于 0% 帧=静态高亮） */
+@keyframes gaDropPulse{ 0%,100%{ border-color:var(--accent); } 50%{ border-color:color-mix(in srgb, var(--accent) 45%, transparent); } }
+.main.dragover::after{ animation:gaFadeUp var(--dur-2) ease-out, gaDropPulse 1.2s ease-in-out infinite; }
+.page.page--chat-ui[data-page="collab"].dragover .collab-msgs::after{
+  animation:gaFadeUp var(--dur-2) ease-out, gaDropPulse 1.2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion:reduce){
   *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  /* §Y 勘误: 通配符不匹配伪元素——拖放脉冲(::after)须显式钉死, 停于 0% 帧=静态高亮 */
+  .main.dragover::after, .page.page--chat-ui[data-page="collab"].dragover .collab-msgs::after{
+    animation-duration:.001ms !important; animation-iteration-count:1 !important;
+  }
   /* 旋转指示器=功能性动效(唯一"在跑"信号), reduce 时仅放慢不冻结 */
   .ga-spin, .send.is-busy::after, .collab-rail-spin{
     animation-duration:.9s !important; animation-iteration-count:infinite !important;

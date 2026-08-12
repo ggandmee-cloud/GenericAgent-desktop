@@ -639,12 +639,33 @@ nav.addEventListener('click', (e) => {
 });
 
 /* ═══════════════ 弹窗开关 ═══════════════ */
-const openModal = (id) => { const m = document.getElementById(id); if (m) m.hidden = false; };
+/* §Y1.2: 弹层退场三守卫（GY0-B3）——已 hidden 幂等 / animationend(card, once)+150ms 兜底先到收口 /
+   重开 clear 残留 timer 防幽灵关闭。业务语句时序不变: 只延迟 hidden 置位。 */
+function gaCloseModal(m) {
+  if (!m || m.hidden || m.classList.contains('closing')) return;
+  m.classList.add('closing');
+  const card = m.querySelector('.modal-card') || m;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(m._gaCloseTimer);
+    // 重开撤销守卫: openModal 已摘 .closing 时本次关闭作废——否则重开后的入场 animationend
+    // 会借道此回调幽灵关窗（once listener 无法提前摘, 以状态复查兜底）
+    if (!m.classList.contains('closing')) return;
+    m.classList.remove('closing');
+    m.hidden = true;
+    m.querySelectorAll('.field-limit-hint').forEach(h => h.style.display = 'none');
+  };
+  card.addEventListener('animationend', finish, { once: true });
+  m._gaCloseTimer = setTimeout(finish, 150);
+}
+const openModal = (id) => {
+  const m = document.getElementById(id);
+  if (m) { clearTimeout(m._gaCloseTimer); m.classList.remove('closing'); m.hidden = false; }
+};
 window.gaOpenModal = openModal;
-const closeModals = () => document.querySelectorAll('.modal').forEach(m => {
-  m.hidden = true;
-  m.querySelectorAll('.field-limit-hint').forEach(h => h.style.display = 'none');
-});
+const closeModals = () => document.querySelectorAll('.modal').forEach(m => gaCloseModal(m));
 const bindClick = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
 bindClick('add-model-btn', (e) => {
   e.stopPropagation();
@@ -852,10 +873,7 @@ bindClick('model-guide-copy', (e) => {
 bindClick('preset-btn',    (e) => { e.stopPropagation(); openModal('preset-modal'); });
 document.querySelectorAll('.modal').forEach(m =>
   m.addEventListener('click', (e) => {
-    if (e.target.closest('[data-close]')) {
-      m.hidden = true;
-      m.querySelectorAll('.field-limit-hint').forEach(h => h.style.display = 'none');
-    }
+    if (e.target.closest('[data-close]')) gaCloseModal(m);  // §Y1.2: ×/backdrop 最高频路径走退场（GY0-B2）
   }));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModals(); });
 
@@ -880,7 +898,7 @@ function showConfirmDialog({ title, message, okText, okKind = 'primary', cancelT
     const finish = (yes) => {
       if (done) return;
       done = true;
-      modal.hidden = true;
+      gaCloseModal(modal);  // §Y1.2 退场(业务时序不变)
       cleanup();
       resolve(yes);
     };
@@ -2310,6 +2328,7 @@ function restoreElapsedBadges(sess, box) {
 function appendMessage(sess, msg) {
   if (!isActive(sess)) return;
   const el = msgNode(msg);
+  el.classList.add('msg-enter');  // §Y1.1 入场(opacity-only); hydrate 批量灌不经此路径
   ensureMsgs().appendChild(el);
   if (msg.role === 'assistant') {
     const r = rt(sess);
@@ -2401,6 +2420,21 @@ msgArea.addEventListener('scroll', () => {
   updateScrollNav();
   // W3.5v4: pin 条滚动感知（当前轮次 user 消息）——rAF 节流只读不写滚, 不入滚动写者名单
   if (!_pinBarRaf) _pinBarRaf = requestAnimationFrame(() => { _pinBarRaf = 0; syncPinBar(); });
+});
+/* §Y1.3: fold 展开内容淡入——只挂用户主动 toggle（GY0-B4: paintDraft 每 tick 重建 innerHTML,
+   [open] 裸选择器会逐 tick 重放）; rAF 后读 open——click 默认行为翻转在事件派发后 */
+msgArea.addEventListener('click', (e) => {
+  const sum = e.target.closest('.fold > summary');
+  if (!sum) return;
+  const det = sum.parentElement;
+  requestAnimationFrame(() => {
+    if (det.open) { det.classList.remove('fold-opened'); void det.offsetWidth; det.classList.add('fold-opened'); }
+  });
+});
+msgArea.addEventListener('animationend', (e) => {
+  if (e.animationName !== 'gaFadeUp') return;
+  const det = e.target.closest?.('.fold.fold-opened');
+  if (det) det.classList.remove('fold-opened');  // 一次性类自清（契约字面）
 });
 
 function scrollBottom(force) {  // force 语义对齐手机版 scroll(f)：清顶置态、恢复贴底
@@ -4630,7 +4664,7 @@ if (addModelForm) addModelForm.addEventListener('submit', async (e) => {
     const pid = isEdit ? editingModelId : (res.profileId ?? state.modelProfiles.at(-1)?.id ?? 0);
     const p = state.modelProfiles.find(x => (x.id ?? 0) === pid) || state.modelProfiles.at(-1);
     if (p) await selectModel(p.id ?? pid, p.name);
-    document.getElementById('add-model-modal').hidden = true;
+    gaCloseModal(document.getElementById('add-model-modal'));  // §Y1.2
     addModelForm.reset();
     editingModelId = null;
     if (errEl) errEl.hidden = true;
@@ -5559,7 +5593,7 @@ if (cpSaveBtn) cpSaveBtn.addEventListener('click', () => {
   if (cpEditId) updateCustomPreset(cpEditId, title, prompt);
   else addCustomPreset(title, prompt);
   cpEditId = null;
-  if (cpModal) cpModal.hidden = true;
+  if (cpModal) gaCloseModal(cpModal);  // §Y1.2
 });
 
 const restoreBtn = document.getElementById('preset-restore-btn');
@@ -5576,7 +5610,7 @@ function openLightbox(src) {
 }
 function closeLightbox() {
   if (!lightbox || !lightboxImg) return;
-  lightbox.hidden = true;
+  gaCloseModal(lightbox);  // §Y1.2 lightbox 同走退场(无 modal-card 时动画挂自身)
   lightboxImg.src = '';
 }
 if (lightbox) {
@@ -6006,7 +6040,7 @@ async function saveChannelMykey() {
   try {
     await window.ga.saveMykeyContent(chanConfigEditor.value);
     showChanToast(t('sys.configSaved'), '', 'ok');
-    chanConfigModal.hidden = true;
+    gaCloseModal(chanConfigModal);  // §Y1.2
   } catch (e) {
     showChanToast(t('err.channelLoad'), e.message || String(e), 'err');
   } finally {
