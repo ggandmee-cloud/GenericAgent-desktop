@@ -814,14 +814,21 @@ if (pqEl) pqEl.addEventListener('click', (e) => {
 });
 // 「快速接入」卡片折叠/展开（向下箭头），状态记忆到 localStorage
 const pqToggle = document.getElementById('pq-toggle');
+let pqReevalDefault = () => {};  // U4: loadSessions 完成后重估默认折叠（GU0-S4：pq 初始化时 sessions 恒为空）
 if (pqEl && pqToggle) {
   const applyPq = (collapsed) => {
     pqEl.classList.toggle('collapsed', collapsed);
     pqToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   };
-  let pqCollapsed = false;
-  try { pqCollapsed = localStorage.getItem('ga_pq_collapsed') === '1'; } catch (_) {}
+  let pqCollapsed = false, pqHasPref = true;
+  try {
+    const v = localStorage.getItem('ga_pq_collapsed');
+    pqHasPref = v !== null;
+    pqCollapsed = v === '1';
+  } catch (_) {}
   applyPq(pqCollapsed);
+  // U4: 无存储偏好且已有会话 → 默认折叠（不写存储，用户手动操作过则永不重估）
+  pqReevalDefault = () => { if (!pqHasPref && state.sessions.size > 0) applyPq(true); };
   const togglePq = (e) => {
     if (e) e.stopPropagation();
     pqCollapsed = !pqEl.classList.contains('collapsed');
@@ -2749,15 +2756,22 @@ function renderSessionList() {
       lastG = g;
     }
     const showUnseen = unseen && !busy;
+    const title = displayTitle(sess);
+    const meta = convMetaText(sess);
     const item = document.createElement('div');
     item.className = 'conv-item' + (currentPage === 'chat' && sess.id === state.activeId ? ' active' : '') + (busy ? ' busy' : '') + (showUnseen ? ' unseen' : '');
     item.dataset.id = sess.id;
+    // U4: 悬浮显完整标题（clamp 截断的兜底，复用 data-tooltip 基建）+ 键盘可达
+    item.dataset.tooltip = title;
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
+    item.setAttribute('aria-label', meta ? `${title}, ${meta}` : title);
     const pinSvg = sess.pinned ? GA_ICON('pushPinSimple', 'ci-pin') : '';
     item.innerHTML =
       (busy ? '<span class="ci-dot"></span>' : '') +
       `<div class="ci-main">` +
-      `<div class="ci-title">${pinSvg}${escapeHtml(displayTitle(sess))}</div>` +
-      `<div class="ci-meta${showUnseen ? ' done' : ''}">${escapeHtml(convMetaText(sess))}</div></div>` +
+      `<div class="ci-title">${pinSvg}${escapeHtml(title)}</div>` +
+      `<div class="ci-meta${showUnseen ? ' done' : ''}">${escapeHtml(meta)}</div></div>` +
       (showUnseen ? '<span class="ci-unseen" aria-hidden="true"></span>' : '') +
       `<button class="ci-more" data-no-tooltip aria-label="${escapeHtml(t('common.more'))}">${GA_ICON('dotsThreeVertical')}</button>`;
     convListEl.appendChild(item);
@@ -2929,6 +2943,18 @@ function positionConvMenu(anchor) {
   convMenu.style.left = `${left}px`;
   convMenu.style.top = `${top}px`;
 }
+// U4 抽取：ci-more 点击与行右键共用（菜单文案按置顶态切换 + 定位）
+function openConvMenu(id, anchor) {
+  menuTargetId = id;
+  const tgt = state.sessions.get(menuTargetId);
+  const pinSpan = convMenu.querySelector('[data-act="pin"] [data-i18n]');
+  if (pinSpan) {
+    const k = tgt && tgt.pinned ? 'ctx.unpin' : 'ctx.pin';
+    pinSpan.setAttribute('data-i18n', k);
+    pinSpan.textContent = t(k);
+  }
+  positionConvMenu(anchor);
+}
 function isSessionRowInteractiveTarget(target) {
   const el = target instanceof Element ? target : null;
   return !!el?.closest?.(
@@ -2950,16 +2976,7 @@ convListEl.addEventListener('click', (e) => {
       hideConvMenu();
       return;
     }
-    menuTargetId = nextTargetId;
-    // 根据当前会话置顶状态切菜单文案:置顶 / 取消置顶
-    const tgt = state.sessions.get(menuTargetId);
-    const pinSpan = convMenu.querySelector('[data-act="pin"] [data-i18n]');
-    if (pinSpan) {
-      const k = tgt && tgt.pinned ? 'ctx.unpin' : 'ctx.pin';
-      pinSpan.setAttribute('data-i18n', k);
-      pinSpan.textContent = t(k);
-    }
-    positionConvMenu(more);
+    openConvMenu(nextTargetId, more);
     return;
   }
   if (isSessionRowInteractiveTarget(e.target)) return;
@@ -3042,7 +3059,61 @@ convMenu.addEventListener('click', (e) => {
   hideConvMenu();
 });
 document.addEventListener('click', hideConvMenu);
-newConvBtn.addEventListener('click', (e) => { e.preventDefault(); newSession(); });
+// U4: 行右键呼出既有菜单（与 ci-more 同菜单同定位链路，锚点用鼠标位）
+convListEl.addEventListener('contextmenu', (e) => {
+  const item = e.target.closest('.conv-item');
+  if (!item || !item.dataset.id || item.classList.contains('renaming')) return;
+  e.preventDefault();
+  hideTooltip();
+  openConvMenu(item.dataset.id, { getBoundingClientRect: () => new DOMRect(e.clientX, e.clientY, 0, 0) });
+});
+// U4: 行键盘激活（Enter/Space），配合 role=button/tabindex
+convListEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const item = e.target instanceof Element ? e.target.closest('.conv-item') : null;
+  if (!item || e.target !== item) return;
+  e.preventDefault();
+  item.click();
+});
+// 合并单栏后新对话按钮全页面可见：点击同时切回聊天页（UX_SPEC §5 ⌘N 等价此路径）
+newConvBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  newSession();
+  const chatNav = nav.querySelector('.nav-item[data-page="chat"]');
+  if (chatNav && !chatNav.classList.contains('active')) chatNav.click();
+});
+/* U4: 全局快捷键（UX_SPEC §5）——⌘K/Ctrl+K 聚焦搜索、⌘N/Ctrl+N 新对话；
+   IME 组合期间忽略；不占用 Shift/Alt 组合；Esc 单独绑在搜索框（见下），不进全局 Esc 链 */
+document.addEventListener('keydown', (e) => {
+  if (e.isComposing) return;
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+  const k = (e.key || '').toLowerCase();
+  if (k === 'k') {
+    e.preventDefault();
+    bodyEl.classList.remove('sb-collapsed');  // 折叠态先展开侧栏
+    if (searchInput) { searchInput.focus(); searchInput.select(); }
+  } else if (k === 'n') {
+    e.preventDefault();
+    newConvBtn?.click();
+  }
+});
+// U4: 搜索框 Esc——有词清空并刷新，无词失焦；不冒泡到全局 Esc（modal/菜单各自处理）
+if (searchInput) searchInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.isComposing) return;
+  e.stopPropagation();
+  if (searchInput.value) {
+    searchInput.value = '';
+    renderSessionList();
+  } else {
+    searchInput.blur();
+  }
+});
+// U4: 快捷键提示 tooltip（按平台显示 ⌘ / Ctrl+）
+{
+  const modKey = /mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
+  newConvBtn?.setAttribute('data-tooltip', `${modKey}N`);
+  searchInput?.closest('.search')?.setAttribute('data-tooltip', `${modKey}K`);
+}
 
 /* ═══════════════ 轮询 + 流式 ═══════════════ */
 function normalize(m) {
@@ -3533,7 +3604,10 @@ function migrateNativeTooltips(root = document) {
   });
 }
 function tooltipNodeFromEventTarget(target) {
+  // U4: data-no-tooltip 后代抑制——悬浮 ci-more 等控件时不弹其所在行的标题 tooltip
+  const skip = target?.closest?.('[data-no-tooltip]');
   const el = target?.closest?.('[data-tooltip],[title]');
+  if (skip && el && el.contains(skip)) return null;
   if (el?.hasAttribute('title')) {
     const value = el.getAttribute('title') || '';
     setTooltip(el, value);
@@ -3579,6 +3653,8 @@ function initCustomTooltips() {
   document.addEventListener('pointerover', (e) => {
     const target = tooltipNodeFromEventTarget(e.target);
     if (target) showTooltip(target);
+    // U4: 移入 data-no-tooltip 控件（如行内 ⋮）时收起已弹出的宿主 tooltip，而非任其驻留遮挡
+    else if (tooltipTarget && e.target instanceof Element && e.target.closest('[data-no-tooltip]')) hideTooltip();
   }, true);
   document.addEventListener('pointerout', (e) => {
     if (!tooltipTarget) return;
@@ -5815,6 +5891,7 @@ if (chanListEl) {
 /* ═══════════════ 启动 ═══════════════ */
 (async () => {
 await loadSessions();
+pqReevalDefault();  // U4: 会话就绪后重估快速接入卡默认折叠（GU0-S4）
 applyAppearance(appearance, plainUi, { persist: false });
 applyTheme(theme, { persist: false });
 initChatFontStepper();
