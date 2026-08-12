@@ -46,6 +46,10 @@
   --elev-sheet:0 -8px 40px rgba(0,0,0,.16);
   --ring:rgba(0,0,0,.06);
   --code-bg:#f5f5f7; --code-fg:#1d1d1f; --code-head:rgba(0,0,0,.035);
+  /* —— 起始页 chips 玻璃令牌(GA 1:1) + 影子令牌化 —— */
+  --chipBg:color-mix(in srgb,var(--surface) 82%,transparent);
+  --chipEdge:linear-gradient(var(--line),var(--line));
+  --chipShadow:0 1px 2px rgba(0,0,0,.04),0 6px 18px rgba(20,24,60,.05);
   --ease-slide:cubic-bezier(.32,.72,0,1); --ease-in-soft:cubic-bezier(.2,.7,.25,1);
 
   /* —— ④ 语义短名(组件层实际引用) —— */
@@ -127,6 +131,7 @@ html[data-appearance="dark"]{
   --md-sys-color-success:#32d74b; --md-sys-color-warn:#ff9f0a;
   --ring:rgba(255,255,255,.09);
   --code-bg:#171717; --code-fg:#e6e6e6; --code-head:rgba(255,255,255,.05);
+  --chipEdge:linear-gradient(135deg,rgba(255,255,255,.26),var(--line) 30%,var(--line) 70%,rgba(255,255,255,.16));
   --acc2:#c7c7cc;
   --elev-1:0 0 0 1px rgba(255,255,255,.04),0 1px 2px rgba(0,0,0,.5);
   --elev-2:0 0 0 1px rgba(255,255,255,.04),0 8px 30px rgba(0,0,0,.55);
@@ -900,6 +905,11 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 .bubble.md th,.bubble.md td{ border:1px solid var(--line); padding:6px 10px; text-align:left; }
 .bubble.md th{ background:var(--surface3); color:var(--txt-strong); }
 .bubble.md tbody tr:nth-child(2n) td{ background:color-mix(in srgb, var(--surface3) 40%, transparent); }
+.bubble.md .tw{ margin:.7em 0; overflow-x:auto; border:1px solid var(--line); border-radius:var(--r-xs); scrollbar-width:thin; }
+.bubble.md .tw table{ margin:0; }
+.bubble.md .tw th,.bubble.md .tw td{ border:0; border-right:1px solid var(--line); border-bottom:1px solid var(--line); white-space:nowrap; }
+.bubble.md .tw th:last-child,.bubble.md .tw td:last-child{ border-right:0; }
+.bubble.md .tw tbody tr:last-child td{ border-bottom:0; }
 .fold{ margin:6px 0; border:none; border-radius:0; background:transparent; }
 .bubble .fold summary{ cursor:pointer; padding:6px 10px; font-size:.86em; color:var(--muted); user-select:none; list-style:none; display:flex; align-items:center; gap:4px; }
 .bubble .fold summary::-webkit-details-marker{ display:none; }
@@ -919,25 +929,37 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
 /* 预设功能卡片（现在嵌在聊天空状态）*/
 .chat-start{ width:100%; max-width:560px; }
 html[data-boot-has-sessions] .chat-start{ display:none !important; }
-.feature-head{ text-align:center; margin-bottom:22px; }
-.feature-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; }
+.feature-head{ text-align:center; margin-bottom:26px; }
+.feature-head .page-title{ font-size:23px; font-weight:600; letter-spacing:-.03em; line-height:1.25; color:var(--txt); }
+.feature-head .page-sub{ font-size:15px; color:var(--txt-2); line-height:1.55; margin-top:6px; }
+.feature-grid{ display:flex; flex-wrap:wrap; justify-content:center; gap:8px; max-width:560px; margin:0 auto; }
 .fcard{
-  border:1px solid var(--line); border-radius:var(--r-md); background:var(--card);
-  padding:16px 14px; cursor:pointer; transition:.15s;
+  position:relative; display:inline-flex; align-items:center; gap:6px; max-width:100%;
+  padding:8.5px 14px 8.5px 11px; border:1px solid transparent; border-radius:var(--r-full);
+  font-size:13px; font-weight:500; color:var(--txt-2); cursor:pointer; overflow:hidden;
+  background:linear-gradient(var(--chipBg),var(--chipBg)) padding-box,var(--chipEdge) border-box;
+  box-shadow:var(--chipShadow);
+  transition:transform .12s, box-shadow .2s, color .15s;
+  animation:chipIn .55s cubic-bezier(.2,.7,.25,1) both; animation-delay:var(--d,0ms);
 }
-.fcard:hover{ border-color:var(--line-strong); box-shadow:var(--elev-2); transform:translateY(-1px); }
-.fcard.add{ border-style:dashed; background:var(--accent-soft); }
-.fc-ic{ width:26px; height:26px; color:var(--txt-strong); }
+.fcard::after{
+  content:''; position:absolute; top:0; bottom:0; left:-60%; width:40%; transform:skewX(-18deg);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);
+  animation:chipSheen .9s ease-out 1 both; animation-delay:calc(var(--d,0ms) + 350ms);
+  pointer-events:none;
+}
+@keyframes chipIn{ from{ opacity:0; transform:translateY(8px) scale(.96); } to{ opacity:1; transform:none; } }
+@keyframes chipSheen{ to{ left:120%; } }
+.fcard:hover{ color:var(--txt); box-shadow:var(--elev-2); transform:translateY(-1px); }
+.fcard:active{ transform:scale(.94); }
+.fcard:focus-visible{ outline:2px solid var(--acc); outline-offset:2px; }
+.fcard.add{ background:transparent; border-color:var(--line); border-style:dashed; }
+.fc-ic{ width:15px; height:15px; flex:0 0 auto; color:var(--icon); }
 .fc-t{
-  font-weight:500; font-size:13px; margin-top:10px; font-family:var(--font-sans);
+  font-weight:500; font-size:13px; font-family:var(--font-sans); max-width:180px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.fc-d{
-  font-size:11px; color:var(--muted); margin-top:3px;
-  display:-webkit-box; -webkit-box-orient:vertical;
-  -webkit-line-clamp:2; line-clamp:2;
-  overflow:hidden; text-overflow:ellipsis; word-break:break-word;
-}
+.fc-d{ display:none; }
 
 /* 后台服务页 — 下划线 Tab(消息通道 / 状态面板)。margin 与 .tok-tabs 对齐
    保证两个页面标题与 tab 之间间距一致 */
@@ -1439,7 +1461,9 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   position:fixed; z-index:200; min-width:124px; background:var(--card);
   border:1px solid var(--line); border-radius:var(--r-md); padding:6px;
   box-shadow:var(--shadow-pop);
+  transform-origin:top; animation:menuIn .16s var(--ease-in-soft);
 }
+@keyframes menuIn{ from{ opacity:0; transform:translateY(-4px) scale(.98); } to{ opacity:1; transform:none; } }
 .ctx-menu[hidden]{ display:none; }
 .ctx-item{
   display:flex; align-items:center; gap:8px; padding:8px 10px;
@@ -1816,6 +1840,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
   padding:6px;
   min-width:160px;
   z-index:50;
+  transform-origin:top; animation:menuIn .16s var(--ease-in-soft);
 }
 .ga-menu-item{
   display:block;
@@ -2092,7 +2117,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
 /* ─── 自定义预设：卡上的删除按钮 ─── */
 .fcard{ position:relative; }
 .fcard .fc-x{
-  position:absolute; top:6px; right:6px;
+  position:absolute; top:50%; right:5px; transform:translateY(-50%);
   width:20px; height:20px;
   border:0; border-radius:var(--r-full);
   background:var(--card); color:var(--txt-2);
@@ -2107,7 +2132,7 @@ span.flatpickr-weekday{ color:var(--muted) !important; font-size:11px; }
 
 /* ─── 自定义预设：卡上的编辑按钮（删除按钮左侧）─── */
 .fcard .fc-edit{
-  position:absolute; top:6px; right:30px;
+  position:absolute; top:50%; right:27px; transform:translateY(-50%);
   width:20px; height:20px;
   border:0; border-radius:var(--r-full);
   background:var(--card); color:var(--txt-2);
@@ -2604,4 +2629,9 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
   .collab-guide-step{ gap:20px; }
   .page.page--chat-ui[data-page="collab"].collab-prog-open .collab-rail{ left:min(232px, 72vw); }
   .collab-prog-panel{ width:min(232px, 72vw); }
+}
+
+/* —— 无障碍: 减动效(GA 全局规则 1:1) —— */
+@media (prefers-reduced-motion:reduce){
+  *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
 }

@@ -1005,6 +1005,8 @@ function renderMarkdown(text) {
         const label = lang || 'code';
         return `<div class="code-block"><div class="code-block-head"><span class="code-block-lang">${escapeHtml(label)}</span><button class="code-block-copy" aria-label="Copy code">\u29C9</button></div><pre><code class="language-${escapeHtml(label)}">${body}</code></pre></div>`;
       });
+    // C5 表格: .tw 横滚容器(GA .sb .tw 蓝本)
+    html = html.replace(/<table>/g, '<div class="tw"><table>').replace(/<\/table>/g, '</table></div>');
     return html;
   } catch (_) { return escapeHtml(text); }
 }
@@ -4870,6 +4872,8 @@ function renderAllPresets() {
       removable: false,
     });
     grid.appendChild(addCard);
+    // C12 交错入场: 每枚 chip 40ms 延迟(上限 12 枚, 防自定义过多时久等)
+    grid.querySelectorAll('.fcard').forEach((el, i) => el.style.setProperty('--d', `${Math.min(i, 12) * 40}ms`));
   });
   updateRestoreBtnVisibility();
 }
@@ -5177,7 +5181,7 @@ function showChanToast(title, detail, kind) {
     el.removeAttribute('maxlength');   // 转为 JS 管控
     const hint = document.createElement('span');
     hint.className = 'field-limit-hint';
-    hint.style.cssText = 'color:var(--err,#dc2626);font-size:.75rem;display:none;margin-top:2px';
+    hint.style.cssText = 'color:var(--err);font-size:.75rem;display:none;margin-top:2px';
     el.insertAdjacentElement('afterend', hint);
     let hideTimer = null;
     function warn() {
