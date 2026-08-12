@@ -2633,10 +2633,16 @@ function relTime(ms) {
   const diff = now - d;
   if (diff < 60e3) return t('time.justNow');
   if (diff < 3600e3) return t('time.minAgo', { n: Math.floor(diff / 60e3) });
+  // 日界一律用日历构造（GU2-S1：day0-86400e3 定长回退在 DST 时区会误桶）
   const day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yest0 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
+  const week0 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
   if (ms >= day0) return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  if (ms >= day0 - 86400e3) return t('time.yesterday');
-  if (ms >= day0 - 6 * 86400e3) return t('time.daysAgo', { n: Math.ceil((day0 - ms) / 86400e3) });
+  if (ms >= yest0) return t('time.yesterday');
+  if (ms >= week0) {
+    const d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    return t('time.daysAgo', { n: Math.round((day0 - d0) / 86400e3) });
+  }
   const zh = lang === 'zh';
   if (d.getFullYear() === now.getFullYear())
     return zh ? `${d.getMonth() + 1}月${d.getDate()}日` : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -2650,8 +2656,8 @@ function convGroupKey(sess, nowMs) {
   const n = new Date(nowMs);
   const day0 = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
   if (ts >= day0) return 'Today';
-  if (ts >= day0 - 86400e3) return 'Yesterday';
-  if (ts >= day0 - 6 * 86400e3) return 'Week';
+  if (ts >= new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1).getTime()) return 'Yesterday';  // GU2-S1 日历构造防 DST
+  if (ts >= new Date(n.getFullYear(), n.getMonth(), n.getDate() - 6).getTime()) return 'Week';
   return 'Earlier';
 }
 // 行 meta 状态机（UX_SPEC §3）：运行中 · mm:ss ＞ 空闲相对时间（U3 在中间插「已完成」态）
@@ -2732,7 +2738,8 @@ function syncConvTicker() {
   const anyBusy = [...state.runtime.values()].some(r => r && r.busy);
   if (anyBusy && !_convTickId) _convTickId = setInterval(() => tickConvMetas(true), 1000);
   else if (!anyBusy && _convTickId) { clearInterval(_convTickId); _convTickId = null; }
-  if (!_convSlowId) _convSlowId = setInterval(() => tickConvMetas(false), 60000);
+  // 慢轮兼做跨零点组头刷新（GU2-S3）：renderSessionList 的签名含 groupKey，日界翻转时自动重建
+  if (!_convSlowId) _convSlowId = setInterval(() => { tickConvMetas(false); renderSessionList(); }, 60000);
 }
 if (searchInput) searchInput.addEventListener('input', () => renderSessionList());
 async function ensureBridgeSession(sess) {
