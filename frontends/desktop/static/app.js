@@ -2884,6 +2884,8 @@ function syncChatHead() {
     setTooltip(pinBtn, t(k));
     pinBtn.setAttribute('aria-label', t(k));
   }
+  const renBtn = document.getElementById('ch-rename');
+  if (renBtn) renBtn.setAttribute('aria-label', t('ctx.rename'));  // GW1-S1: setTooltip 守卫只写一次，语言切换须强制跟新
 }
 /* W1 最近会话回访（UX_SPEC §W1.4）：sortedSessions 前 3，与列表同数据源同节拍；
    全出口调用（含空列表——删光会话必须清空 strip，防残留已删会话卡，GW0-S7） */
@@ -2894,8 +2896,10 @@ function renderRecentStrip() {
   if (!strip || !cards) return;
   const top = sortedSessions().slice(0, 3);
   strip.hidden = top.length === 0;
-  // poll 每拍会走到这里（renderSessionList 全出口挂接）——内容签名防抖，避免重建打断 hover
-  const sig = top.map(s => `${s.id}\u001e${displayTitle(s)}\u001e${Math.floor(normTs(s.lastActiveTs) / 60e3)}`).join('\u001f');
+  // poll 每拍会走到这里（renderSessionList 全出口挂接）——内容签名防抖，避免重建打断 hover。
+  // 签名须含 lang 与当前分钟位（GW1-B1）：否则语言切换后 rc-m 中英混排、相对时间冻结在首次渲染值
+  const sig = lang + '\u001d' + Math.floor(Date.now() / 60e3) + '\u001d'
+    + top.map(s => `${s.id}\u001e${displayTitle(s)}\u001e${Math.floor(normTs(s.lastActiveTs) / 60e3)}`).join('\u001f');
   if (sig === _recentSig) return;
   _recentSig = sig;
   cards.innerHTML = '';
