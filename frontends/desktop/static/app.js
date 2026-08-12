@@ -2399,6 +2399,8 @@ msgArea.addEventListener('scroll', () => {
   if (pinned && Date.now() - _lastPin > 800 && !pinElAtTop()) { pinned = false; _pinSeq++; }
   stick = nb && !pinned;
   updateScrollNav();
+  // W3.5v4: pin 条滚动感知（当前轮次 user 消息）——rAF 节流只读不写滚, 不入滚动写者名单
+  if (!_pinBarRaf) _pinBarRaf = requestAnimationFrame(() => { _pinBarRaf = 0; syncPinBar(); });
 });
 
 function scrollBottom(force) {  // force 语义对齐手机版 scroll(f)：清顶置态、恢复贴底
@@ -2926,28 +2928,35 @@ function renderSessionList() {
 /* W3.5v3 会话头（三拍重构）：标题只显标题栏（syncDocTitle→tb-title），
    chat-head 变身「最近用户消息」pin 条，pin/改名钮迁 tb-actions（id 不变绑定零改）。
    调用面不变：renderSessionList 全出口 + refreshEmptyState，不新增轮询。 */
+/* W3.5v4（Boss 四拍）: pin 条=「当前视口上方最近一条 user 消息」（滚动感知, Claude 同款语义）——
+   顶线上方最近者为当前轮次; 顶线在首条之前取首条; 文本直取 bubble 渲染文（与视觉一致, display 口径天然继承） */
+function currentTurnUserText() {
+  const area = document.querySelector('.page[data-page="chat"] .msg-area');
+  if (!area) return '';
+  const users = area.querySelectorAll('.msg.user');
+  if (!users.length) return '';
+  const areaTop = area.getBoundingClientRect().top;
+  let cur = users[0];
+  for (const u of users) {
+    if (u.getBoundingClientRect().top - areaTop <= 10) cur = u; else break;
+  }
+  return (cur.querySelector('.bubble')?.textContent || '').trim();
+}
+let _pinBarRaf = 0;
+function syncPinBar() {
+  const head = document.getElementById('chat-head');
+  if (!head) return;
+  const txt = currentTurnUserText();
+  head.hidden = !txt;
+  if (txt) {
+    const el = document.getElementById('ch-lm-text');
+    if (el && el.textContent !== txt) el.textContent = txt;
+  }
+}
 function syncChatHead() {
   syncDocTitle();  // 窗口标题+标题带跟随会话名——全出口覆盖切换/改名/poll 改题
   const sess = activeSess();
-  const head = document.getElementById('chat-head');
-  if (head) {
-    // pin 条内容=最近一条 user 消息（display 优先——附件占位已清洗口径与复制一致）
-    let lastTxt = '';
-    if (sess && sess.messages && sess.messages.length) {
-      for (let i = sess.messages.length - 1; i >= 0; i--) {
-        const m = sess.messages[i];
-        if (m.role === 'user') {
-          lastTxt = stripAttachPlaceholders((typeof m.display === 'string' && m.display.length) ? m.display : (m.content || '')).trim();
-          break;
-        }
-      }
-    }
-    head.hidden = !lastTxt;
-    if (lastTxt) {
-      const el = document.getElementById('ch-lm-text');
-      if (el && el.textContent !== lastTxt) el.textContent = lastTxt;
-    }
-  }
+  syncPinBar();
   // 标题栏操作钮（有活跃会话即显; 钮态照旧）
   const actions = document.getElementById('tb-actions');
   if (actions) actions.hidden = !sess;

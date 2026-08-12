@@ -533,11 +533,11 @@ html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
   padding-left:84px;  /* 左让红绿灯(≈62px)+呼吸位 */
   background:var(--panel);
   border-right:1px solid var(--divider);
-  transition:flex-basis .2s, background .2s;
+  transition:background .2s, border-color .2s;
 }
-/* 折叠态: 侧栏列消失, tb-side 收为最小宽(灯+开关), 分界线与面色随之退场 */
+/* 折叠态: 面色与分界线退场但几何不动——标题不随折叠左移（Boss 四拍）; 空出的左段仍是窗口拖拽区 */
 #app:has(.body.sb-collapsed) .tb-side{
-  flex-basis:124px; background:var(--bg); border-right-color:transparent;
+  background:var(--bg); border-right-color:transparent;
 }
 .tb-main{
   flex:1; min-width:0;
