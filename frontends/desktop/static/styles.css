@@ -460,7 +460,7 @@ body{ background:var(--bg); color:var(--txt); font-size:13px; overflow:hidden; f
   box-sizing:border-box;
   transition:width .2s, padding .2s, opacity .15s;
 }
-/* V1: 侧栏顶行 = 折叠钮 + 新对话主按钮（brand 区删除，Boss 2026-08-12 拍板保持清爽） */
+/* V1: 侧栏顶行 = 折叠钮 + 新对话主按钮（顶部品牌标识区删除，Boss 2026-08-12 拍板保持清爽） */
 .sb-top{
   display:flex; align-items:center; gap:6px;
   flex:0 0 auto;

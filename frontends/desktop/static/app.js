@@ -3648,6 +3648,7 @@ function initCustomTooltips() {
     if (target) showTooltip(target);
   }, true);
   document.addEventListener('focusout', hideTooltip, true);
+  document.addEventListener('pointerdown', hideTooltip, true);  // GV1-S5: 点击即收，防浮条驻留遮挡弹出菜单
   window.addEventListener('scroll', hideTooltip, true);
   window.addEventListener('resize', hideTooltip);
   new MutationObserver((records) => {
