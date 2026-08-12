@@ -2816,7 +2816,7 @@ html[data-appearance="dark"] .bubble.md .katex{ color:var(--txt); }
 /* toast 基态含 translateX(-50%) 定位平移——复合值防丢居中(GX0-B3); 过渡沿用存量 .18s 保 opacity/transform 同步(复审 S5) */
 .ga-toast.clickable:active{ transform:translateX(-50%) translateY(0) scale(.98); }
 
-/* X1.2 按压反馈·底色制——宽行/标签族(11), :active:hover 防触屏残留; 键盘反馈面=focus-visible 环(GX0-S6 表态) */
+/* X1.2 按压反馈·底色制——宽行/标签族(12, W3.5v3 增 ch-lastmsg 于组件处入族), :active:hover 防触屏残留; 键盘反馈面=focus-visible 环(GX0-S6 表态) */
 .conv-item:active:hover, .nav-item:active:hover, .ctx-item:active:hover, .ga-menu-item:active:hover,
 .set-nav-row:active:hover, .tok-row-session:active:hover, .collab-card-sum:active:hover,
 .bubble .fold summary:active:hover, .model-row:active:hover, .svc-tab:active:hover, .tok-tab:active:hover{
