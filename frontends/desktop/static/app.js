@@ -419,10 +419,11 @@ function setTooltip(el, text) {
 /* W3+: 窗口标题跟随活跃会话名（Boss 2026-08-13「标题栏用会话名」），无会话回退 app.title。
    Tauri v2 原生标题栏不自动跟随 document.title——须显式 setTitle（capability 需 core:window:allow-set-title，
    旧壳无权限时静默降级只改 document.title）；调用点=applyI18n(语言/启动) + syncChatHead(会话切换/改名/poll 改题) */
+let draftChat = false;  // §AA: 新对话草稿态——只切空窗不建会话，首次输入才真实创建
 function syncDocTitle() {
   let name = '';
   try { const s = activeSess(); if (s) name = displayTitle(s); } catch (_) { /* 启动早期数据未就绪 */ }
-  const next = name || t('app.title');
+  const next = name || t(draftChat ? 'conv.defaultTitle' : 'app.title');
   // W3.5v2: 自绘标题带同步（hiddenTitle 后原生标题不显, 带内文本是用户可见标题）——
   // 置于 document.title 守卫前: 首帧 <title> 可能已等于 next, 带文本仍需初始化
   const tb = document.getElementById('tb-title');
@@ -599,12 +600,11 @@ function applyAppearance(nextApp, nextPlain, { persist } = { persist: true }) {
 }
 
 /* ═══════════════ 侧边栏导航 ═══════════════ */
-const nav = document.getElementById('nav');
+const sbCollab = document.getElementById('sb-collab');  /* §AC: nav 归零, 指挥家=侧栏底行图标钮 */
 const pages = document.querySelectorAll('#pages .page');
 let currentPage = 'chat';
-/* V1(GV0-B1): nav 缩编后 token/services 无 nav 项——item 可为 null（高亮全灭为合法态），
-   数据加载随切页在此触发（原挂 nav click 监听，绕过 nav 直达会白屏）。 */
-/* W3(§W3.1): token/services 无 nav 项，记来源供页头返回钮还原心智路径。
+/* V1(GV0-B1)→§AC: nav 已归零，数据加载随切页在此触发（绕过入口直达不会白屏）。
+   W3(§W3.1): token/services 记来源供页头返回钮还原心智路径。
    fromSettings 由调用点显式传参（GW0-B1: set-nav-row 先关弹窗后跳页，gaGoPage 自读弹窗开合恒为假） */
 let _pageFrom = { page: 'chat', settings: false };
 function gaGoPage(key, opts = {}) {
@@ -612,9 +612,8 @@ function gaGoPage(key, opts = {}) {
   if ((key === 'token' || key === 'services') && currentPage !== key) {
     _pageFrom = { page: currentPage, settings: !!opts.fromSettings };
   }
-  const item = nav?.querySelector(`.nav-item[data-page="${key}"]`);
   currentPage = key;
-  nav.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n === item));
+  sbCollab?.classList.toggle('active', key === 'collab');
   pages.forEach(p => p.classList.toggle('active', p.dataset.page === key));
   renderSessionList();
   window.gaSetActiveFileComposer?.(key === 'collab' ? 'collab' : 'chat');
@@ -632,15 +631,18 @@ document.querySelectorAll('.page-back').forEach(btn => {
     if (from.settings) openSettings();
   });
 });
-nav.addEventListener('click', (e) => {
-  const item = e.target.closest('.nav-item');
-  if (!item) return;
-  gaGoPage(item.dataset.page);
-});
+/* §AC: 指挥家钮=开关语义（再点回聊天），active 态由 gaGoPage 统一写 */
+sbCollab?.addEventListener('click', () => gaGoPage(currentPage === 'collab' ? 'chat' : 'collab'));
 
 /* ═══════════════ 弹窗开关 ═══════════════ */
-/* §Y1.2: 弹层退场三守卫（GY0-B3）——已 hidden 幂等 / animationend(card, once)+150ms 兜底先到收口 /
-   重开 clear 残留 timer 防幽灵关闭。业务语句时序不变: 只延迟 hidden 置位。 */
+/* §Y1.2: 弹层退场守卫（GY0-B3 / #033 B1）——①已 hidden 幂等 ②animationend(card,once)+150ms 先到收口
+   ③一切复显路径先 clear timer+摘 .closing（openModal/confirm/lightbox 共用 gaPrepareOpen）
+   ④finish 内 .closing 状态复查（防 once listener 借道幽灵关）。业务时序不变: 只延迟 hidden。 */
+function gaPrepareOpen(m) {
+  if (!m) return;
+  clearTimeout(m._gaCloseTimer);
+  m.classList.remove('closing');
+}
 function gaCloseModal(m) {
   if (!m || m.hidden || m.classList.contains('closing')) return;
   m.classList.add('closing');
@@ -650,7 +652,7 @@ function gaCloseModal(m) {
     if (done) return;
     done = true;
     clearTimeout(m._gaCloseTimer);
-    // 重开撤销守卫: openModal 已摘 .closing 时本次关闭作废——否则重开后的入场 animationend
+    // 重开撤销守卫: gaPrepareOpen 已摘 .closing 时本次关闭作废——否则重开后的入场 animationend
     // 会借道此回调幽灵关窗（once listener 无法提前摘, 以状态复查兜底）
     if (!m.classList.contains('closing')) return;
     m.classList.remove('closing');
@@ -662,7 +664,7 @@ function gaCloseModal(m) {
 }
 const openModal = (id) => {
   const m = document.getElementById(id);
-  if (m) { clearTimeout(m._gaCloseTimer); m.classList.remove('closing'); m.hidden = false; }
+  if (m) { gaPrepareOpen(m); m.hidden = false; }
 };
 window.gaOpenModal = openModal;
 const closeModals = () => document.querySelectorAll('.modal').forEach(m => gaCloseModal(m));
@@ -892,6 +894,7 @@ function showConfirmDialog({ title, message, okText, okKind = 'primary', cancelT
     okBtn.classList.toggle('danger', okKind === 'danger');
     okBtn.classList.toggle('primary', okKind !== 'danger');
   }
+  gaPrepareOpen(modal);
   modal.hidden = false;
   return new Promise(resolve => {
     let done = false;
@@ -925,6 +928,34 @@ if (typeof marked !== 'undefined') {
   marked.setOptions({ gfm: true, breaks: true, mangle: false, headerIds: false });
 }
 const ALLOWED_URI_RE = /^(https?:|mailto:|tel:|#|\/)/i;
+/* §AL: Cmd/Ctrl+左键用系统浏览器打开 http(s)。普通点击仍走 target=_blank（webview 内）。
+   捕获阶段拦截，避免 WKWebView 先把 _blank 吃掉。只放行 http(s)，与桥 /open-url 同口径。 */
+function isExternalHttpUrl(href) {
+  try {
+    const u = new URL(String(href || ''), location.href);
+    if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !u.host) return false;
+    if (u.origin === location.origin) return false;  // 空 href / 站内相对链不送浏览器
+    return true;
+  } catch (_) { return false; }
+}
+function openUrlInBrowser(href) {
+  if (!isExternalHttpUrl(href)) return false;
+  fetch(`${BRIDGE_ORIGIN}/open-url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: href }),
+  }).catch(() => {});
+  return true;
+}
+document.addEventListener('click', (e) => {
+  if (e.button !== 0 || !(e.metaKey || e.ctrlKey)) return;
+  const a = e.target.closest?.('a[href]');
+  if (!a) return;
+  const href = a.href;
+  if (!isExternalHttpUrl(href)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openUrlInBrowser(href);
+}, true);
 function escapeHtml(s) {
   const d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML;
 }
@@ -1073,6 +1104,45 @@ function lastFenceCloseLineIndex(lines, from, toExclusive, tickCount) {
     if (f && f.ticks === tickCount && f.tag === '') last = i;
   }
   return last;
+}
+
+/* §AJ: 人话工具行——对齐手机 _twTitle 词典（装机真实分布 top9: code_run 784 / file_read 193 /
+   update_working_checkpoint 114 / web_execute_js 61 / web_scan 29 / file_patch 28 / file_write 18 /
+   ask_user 6 / start_long_term_update 2）。参数是含裸换行的伪 JSON——JSON.parse 快路径 +
+   正则字段拾荒 fallback（手机 _twParse 同教训, 拾荒正则以行为界正好取到字段值首行）。 */
+const TOOL_PHRASE_KEYS = {
+  file_read: 'tool.fileRead', file_write: 'tool.fileWrite', file_patch: 'tool.filePatch',
+  web_execute_js: 'tool.webJs', web_scan: 'tool.webScan',
+  update_working_checkpoint: 'tool.checkpoint', ask_user: 'tool.askUser',
+};
+function toolArgField(body, keys) {
+  const txt = String(body || '');
+  try {
+    const j = JSON.parse(txt);
+    for (const k of keys) if (typeof j[k] === 'string' && j[k].trim()) return j[k];
+  } catch (_) {}
+  for (const k of keys) {
+    const m = new RegExp(`"${k}"\\s*:\\s*"([^"\\n]*)`).exec(txt);
+    if (m && m[1].trim()) return m[1];
+  }
+  return '';
+}
+function clipLine(s, cap = 64) {
+  const first = String(s || '').split('\n').map(x => x.trim()).find(x => x) || '';
+  return first.length > cap ? first.slice(0, cap) + '…' : first;
+}
+function toolPhrase(name, body) {
+  let title;
+  if (name === 'code_run') {
+    const script = toolArgField(body, ['script', 'code', 'cmd']) || String(body || '');
+    title = /(^|\n)\s*(import |from \w+[\w.]* import |def |print\()/.test(script) ? t('tool.runPy')
+      : /(^|\n)\s*(#!\/bin\/(ba|z)?sh|apt |brew |curl |grep |echo |cd )|&&/.test(script) ? t('tool.runSh')
+      : t('tool.runCode');
+  } else {
+    title = TOOL_PHRASE_KEYS[name] ? t(TOOL_PHRASE_KEYS[name]) : name;
+  }
+  const src = toolArgField(body, ['path', 'file', 'url', 'script', 'js', 'code', 'query', 'cmd', 'content']);
+  return { title, sub: clipLine(src || body) };
 }
 
 function parseToolCallBlock(lines, i) {
@@ -1225,15 +1295,25 @@ function stripTurnMarker(body) {
     .replace(/^\s*\**LLM Running \(Turn \d+\) \.\.\.\**\s*/i, '');
 }
 
-function renderTurnBody(body) {
+function foldDetailsHtml(f) {
+  const openAttr = f.open ? ' open' : '';
+  const sub = f.sub ? `<span class="fold-sub">${escapeHtml(f.sub)}</span>` : '';
+  return `<details class="fold ${f.cls}"${openAttr}><summary><span class="fold-t">${escapeHtml(f.label)}</span>${sub}</summary><pre class="fold-pre">${escapeHtml(f.body)}</pre></details>`;
+}
+/* §AJ: mode='split' 时过程块（thinking/tool/result/轮摘要）抽离为 procHtml, prose 单独渲染——
+   终态「执行过程」折叠+答案升格的拆分源（手机 stepsFold+finalMsg 阅读模型）。ask_user 是交互件不抽离。
+   进行中块不再 open（原 open:live 是「大片 code_run」头号来源）, live 态由 summary spinner 示意。 */
+function renderTurnBody(body, mode) {
+  const split = mode === 'split';
   // 自包含：每次调用独立的占位栈，渲染完立即还原，无跨调用共享状态
   const folds = [];
   const asks = [];
   const stash = (label, b, cls, opts) => {
-    folds.push({ label, body: b, cls: cls || '', open: !!(opts && opts.open) });
-    return `\n\n§§FOLD:${folds.length - 1}§§\n\n`;
+    folds.push({ label, body: b, cls: cls || '', open: !!(opts && opts.open), sub: opts && opts.sub || '' });
+    return split ? '' : `\n\n§§FOLD:${folds.length - 1}§§\n\n`;
   };
   const stashAsk = (data) => { asks.push(data); return `\n\n§§ASK:${asks.length - 1}§§\n\n`; };
+  let procTail = '';
   let s = stripTurnMarker(body);
   s = s.replace(/<thinking>[\s\S]*?<\/thinking>/gi, m => stash(t('fold.thinking'), m.replace(/<\/?thinking>/gi, ''), 'fold-thinking'));
   s = foldAgentProtocolBlocks(s, {
@@ -1243,18 +1323,23 @@ function renderTurnBody(body) {
         if (data && normalizeAskUserData(data)) return stashAsk(data);
       }
       const live = !!meta?.inFlight;
-      return stash(`${t('fold.tool')}: ${name}${live ? ' …' : ''}`, json,
-        live ? 'fold-tool fold-tool-live' : 'fold-tool', { open: live });
+      const ph = toolPhrase(name, json);
+      return stash(`${ph.title}${live ? ' …' : ''}`, json,
+        live ? 'fold-tool fold-tool-live' : 'fold-tool', { sub: ph.sub });
     },
     onResult(b, meta) {
       const live = !!meta?.inFlight;
       return stash(`${t('fold.toolResult')}${live ? ' …' : ''}`, b,
-        live ? 'fold-result fold-tool-live' : 'fold-result', { open: live });
+        live ? 'fold-result fold-tool-live' : 'fold-result', { sub: clipLine(b) });
     },
   });
   s = s.replace(/<function_calls>[\s\S]*?<\/function_calls>/gi, m => stash(t('fold.tool'), m, 'fold-tool'));
   s = s.replace(/<function_results>[\s\S]*?<\/function_results>/gi, m => stash(t('fold.toolResult'), m, 'fold-result'));
-  s = s.replace(/<summary>([\s\S]*?)<\/summary>/gi, (_, inner) => `<div class="turn-summary">${inner}</div>`);
+  s = s.replace(/<summary>([\s\S]*?)<\/summary>/gi, (_, inner) => {
+    const div = `<div class="turn-summary">${inner}</div>`;
+    if (split) { procTail += div; return ''; }
+    return div;
+  });
   let html = renderMarkdown(s);
   // 还原占位符
   html = html
@@ -1264,11 +1349,10 @@ function renderTurnBody(body) {
     })
     .replace(/§§FOLD:(\d+)§§/g, (_, i) => {
       const f = folds[Number(i)];
-      if (!f) return '';
-      const openAttr = f.open ? ' open' : '';
-      return `<details class="fold ${f.cls}"${openAttr}><summary>${escapeHtml(f.label)}</summary><pre class="fold-pre">${escapeHtml(f.body)}</pre></details>`;
+      return f ? foldDetailsHtml(f) : '';
     });
-  return html;
+  if (!split) return html;
+  return { proc: folds.map(foldDetailsHtml).join('') + procTail, prose: html };
 }
 
 // 抽出该轮首个 <summary> 文本作为折叠头副标题；无则回退提取工具名列表
@@ -1279,7 +1363,8 @@ function extractTurnSummaryPure(raw) {
   const toolRe = /🛠️\s*Tool:\s*`([^`]+)`/g;
   let tm;
   while ((tm = toolRe.exec(raw || '')) !== null) {
-    if (!tools.includes(tm[1])) tools.push(tm[1]);
+    const label = toolPhrase(tm[1], '').title;  // §AJ: 回退列表同走人话词典
+    if (!tools.includes(label)) tools.push(label);
   }
   return tools.length ? tools.join(', ') : '';
 }
@@ -2195,17 +2280,30 @@ function resolveVisibleTurnIndex(segs, preferredTurn) {
   }
   return Math.max(first, preferred >= 0 ? preferred : (arr.length ? arr.length - 1 : first));
 }
-// 静态完整渲染：visibleTurn 之前的 seg 固化折叠；visibleTurn 作为当前正文展示。
-function renderAssistantTurnsHtml(segs, currTurn, withCursor = false) {
+/* §AJ 静态/终态渲染：过程/结果分离（手机 stepsFold+finalMsg 阅读模型）——
+   全部旧轮 + 末轮的过程块收进单个「执行过程（N 轮）」折叠, 末轮 prose 升格为无框正文。
+   纯 prose 单轮 = 零过程块 → 不折叠, 结构与旧版一致。中断态折叠头「已中断 · 已完成 N 轮」默认展开。
+   流式路径(paintDraft/freezeCurrentTurnDom)不经此函数, 打字机结构零波及。 */
+function renderAssistantTurnsHtml(segs, currTurn, withCursor = false, opts = {}) {
   const arr = Array.isArray(segs) ? segs : [];
   if (!arr.length) return '';
   const first = firstNonEmptyTurnIndex(arr);
   const curr = resolveVisibleTurnIndex(arr, currTurn);
-  let html = '';
+  const stopped = !!opts.stopped;
+  let procInner = '';
+  let n = 0;
   for (let i = first; i < curr; i++) {
-    if ((arr[i] || '').length > 0) html += `<div class="turn-frozen" data-turn="${i}">${renderTurnFold(arr[i] || '', i)}</div>`;
+    if ((arr[i] || '').length > 0) { procInner += `<div class="turn-frozen" data-turn="${i}">${renderTurnFold(arr[i] || '', i)}</div>`; n++; }
   }
-  html += `<div class="turn-cur" data-turn="${curr}">${renderTurnBody(arr[curr] || '')}${withCursor ? '<span class="cursor"></span>' : ''}</div>`;
+  const parts = renderTurnBody(arr[curr] || '', 'split');
+  if (parts.proc) { procInner += `<div class="turn-frozen turn-proc-last" data-turn="${curr}">${parts.proc}</div>`; n++; }
+  let html = '';
+  if (procInner) {
+    const label = (stopped ? t('fold.procAborted') : t('fold.proc')).replace('{n}', n);
+    html += `<details class="fold fold-proc${stopped ? ' fold-proc-abort' : ''}"${stopped ? ' open' : ''}><summary>${escapeHtml(label)}</summary>${procInner}</details>`;
+  }
+  html += `<div class="turn-cur" data-turn="${curr}">${parts.prose}${withCursor ? '<span class="cursor"></span>' : ''}</div>`;
+  if (stopped && !procInner) html += `<p><em>[${escapeHtml(t('status.stopped'))}]</em></p>`;
   return html;
 }
 function assistantCopyText(msg) {
@@ -2237,12 +2335,16 @@ function msgNode(msg) {
       return hit && (hit.name || '');
     });
     const textHtml = chipText ? `<div class="bubble">${chipText}</div>` : '';
-    el.innerHTML = `<div class="user-stack">${filesHtml}${imgsHtml}${textHtml}</div>`;
+    const qBadge = msg.queued
+      ? `<div class="msg-q-badge"><span class="msg-q-t">${escapeHtml(t('msg.queued'))}</span><button type="button" class="msg-q-x" data-qid="${escapeHtml(msg.qid || '')}" aria-label="${escapeHtml(t('msg.queuedDismiss'))}">${GA_ICON('x')}</button></div>`
+      : '';
+    el.innerHTML = `<div class="user-stack">${filesHtml}${imgsHtml}${textHtml}${qBadge}</div>`;
+    if (msg.queued) { el.classList.add('msg-queued'); if (msg.qid) el.dataset.qid = msg.qid; }
   }
   else if (msg.role === 'assistant') {
     const segs = assistantTurnSegs(msg);
-    let html = renderAssistantTurnsHtml(segs, msg.curr_turn, false);
-    if (msg.stopped) html += `<p><em>[${escapeHtml(t('status.stopped'))}]</em></p>`;
+    // §AJ: stopped 收进渲染函数——有过程折叠时以「已中断」头示意, 无过程块才落 [已停止] 行
+    const html = renderAssistantTurnsHtml(segs, msg.curr_turn, false, { stopped: msg.stopped });
     el.innerHTML = `<div class="bubble md">${html}</div>`;
     postRenderEnhance(el.querySelector('.bubble'));
   }
@@ -2424,6 +2526,14 @@ msgArea.addEventListener('scroll', () => {
 /* §Y1.3: fold 展开内容淡入——只挂用户主动 toggle（GY0-B4: paintDraft 每 tick 重建 innerHTML,
    [open] 裸选择器会逐 tick 重放）; rAF 后读 open——click 默认行为翻转在事件派发后 */
 msgArea.addEventListener('click', (e) => {
+  const qx = e.target.closest('.msg-q-x');
+  if (qx) {
+    e.preventDefault();
+    e.stopPropagation();
+    const sess = activeSess();
+    if (sess) dismissQueued(sess, qx.dataset.qid);
+    return;
+  }
   const sum = e.target.closest('.fold > summary');
   if (!sum) return;
   const det = sum.parentElement;
@@ -2753,6 +2863,8 @@ function setBusy(sess, busy, opts = {}) {
   if (wasBusy && !busy && r.draftEl && !r.draftEl.querySelector('.bubble') && !(r.draftSegs && r.draftSegs.length)) {
     r.draftEl.remove(); r.draftEl = null;
   }
+  /* §AK: 排空须在 isActive 早退之前——后台会话收成后同样派出下一条 */
+  if (wasBusy && !busy) setTimeout(() => drainMsgQueue(sess), 0);
   if (!isActive(sess)) return;
   if (busy) {
     chatStatus.setBusy(formatTaskElapsed(Date.now() - (r.taskStartedAt || Date.now())));
@@ -2761,11 +2873,7 @@ function setBusy(sess, busy, opts = {}) {
   } else {
     chatStatus.setDisconnected();
   }
-  if (sendBtn) {
-    sendBtn.classList.toggle('is-stop', busy);
-    sendBtn.setAttribute('aria-label', busy ? t('act.stop') : t('act.send'));
-    sendBtn.title = busy ? t('act.stop') : '';
-  }
+  syncSendMode();
 }
 // run-toggle 现为纯状态展示组件：运行中转红，不再响应点击（停止改由发送键的录制键承担）
 
@@ -2849,8 +2957,7 @@ function markUnseenDone(sess, elapsedMs) {
     kind: 'done',  // W2.3: 完成通知带状态 icon
     onClick: () => {
       setActiveSession(sess.id);
-      const chatNav = nav.querySelector('.nav-item[data-page="chat"]');
-      if (chatNav && !chatNav.classList.contains('active')) chatNav.click();
+      gaGoPage('chat');
     }
   });
 }
@@ -2897,10 +3004,8 @@ function renderSessionList() {
   _convListSig = sig;
   convListEl.innerHTML = '';
   if (rows.length === 0) {
-    /* W2.4: 空态配手绘线条 icon（搜索空=放大镜 / 列表空=对话气泡），文案不变 */
-    const icon = query
-      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8.5" y1="11" x2="13.5" y2="11"/></svg>'
-      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+    /* W2.4→§AB: 空态 icon（搜索空=放大镜 / 列表空=对话气泡），统一 Phosphor，文案不变 */
+    const icon = GA_ICON(query ? 'magnifyingGlass' : 'chatTeardropText');
     const e = document.createElement('div');
     e.className = 'conv-empty';
     e.innerHTML = `<span class="ce-ic">${icon}</span><span>${escapeHtml(t(query ? 'conv.emptySearch' : 'conv.emptyList'))}</span>`;
@@ -2946,11 +3051,13 @@ function renderSessionList() {
     item.tabIndex = 0;
     item.setAttribute('aria-label', meta ? `${title}, ${meta}` : title);
     const pinSvg = sess.pinned ? GA_ICON('pushPinSimple', 'ci-pin') : '';
+    // Z1: meta 态类 running/done 与 U2 状态机同口径；ticker 原位刷新时同步类（见 tickConvMetas）
+    const metaCls = 'ci-meta' + (busy ? ' running' : '') + (showUnseen ? ' done' : '');
     item.innerHTML =
-      (busy ? '<span class="ci-dot"></span>' : '') +
+      (busy ? '<span class="ci-dot" aria-hidden="true"></span>' : '') +
       `<div class="ci-main">` +
       `<div class="ci-title">${pinSvg}${titleHtml}</div>` +
-      `<div class="ci-meta${showUnseen ? ' done' : ''}">${escapeHtml(meta)}</div></div>` +
+      `<div class="${metaCls}">${escapeHtml(meta)}</div></div>` +
       (showUnseen ? '<span class="ci-unseen" aria-hidden="true"></span>' : '') +
       `<button class="ci-more" data-no-tooltip aria-label="${escapeHtml(t('common.more'))}">${GA_ICON('dotsThreeVertical')}</button>`;
     convListEl.appendChild(item);
@@ -2960,7 +3067,7 @@ function renderSessionList() {
   renderRecentStrip();
 }
 /* W3.5v3 会话头（三拍重构）：标题只显标题栏（syncDocTitle→tb-title），
-   chat-head 变身「最近用户消息」pin 条，pin/改名钮迁 tb-actions（id 不变绑定零改）。
+   chat-head 变身「最近用户消息」pin 条（Z1 起操作钮撤离标题栏, 置顶/改名走侧栏 ctx）。
    调用面不变：renderSessionList 全出口 + refreshEmptyState，不新增轮询。 */
 /* W3.5v4（Boss 四拍）: pin 条=「当前视口上方最近一条 user 消息」（滚动感知, Claude 同款语义）——
    顶线上方最近者为当前轮次; 顶线在首条之前取首条; 文本直取 bubble 渲染文（与视觉一致, display 口径天然继承） */
@@ -2989,21 +3096,8 @@ function syncPinBar() {
 }
 function syncChatHead() {
   syncDocTitle();  // 窗口标题+标题带跟随会话名——全出口覆盖切换/改名/poll 改题
-  const sess = activeSess();
   syncPinBar();
-  // 标题栏操作钮（有活跃会话即显; 钮态照旧）
-  const actions = document.getElementById('tb-actions');
-  if (actions) actions.hidden = !sess;
-  if (!sess) return;
-  const pinBtn = document.getElementById('ch-pin');
-  if (pinBtn) {
-    pinBtn.classList.toggle('on', !!sess.pinned);
-    const k = sess.pinned ? 'ctx.unpin' : 'ctx.pin';
-    setTooltip(pinBtn, t(k));
-    pinBtn.setAttribute('aria-label', t(k));
-  }
-  const renBtn = document.getElementById('ch-rename');
-  if (renBtn) renBtn.setAttribute('aria-label', t('ctx.rename'));  // GW1-S1: setTooltip 守卫只写一次，语言切换须强制跟新
+  // Z1: 标题栏去置顶/改名钮（入口=侧栏 ctx 菜单 + 双击 tb-title）；pin 条仍由 syncPinBar 驱动
 }
 /* W1 最近会话回访（UX_SPEC §W1.4）：sortedSessions 前 3，与列表同数据源同节拍；
    全出口调用（含空列表——删光会话必须清空 strip，防残留已删会话卡，GW0-S7） */
@@ -3043,11 +3137,15 @@ function tickConvMetas(busyOnly) {
     const sess = state.sessions.get(item.dataset.id);
     if (!sess) return;
     const r = state.runtime.get(sess.id);
-    if (busyOnly && !(r && r.busy)) return;
+    const busy = !!(r && r.busy);
+    if (busyOnly && !busy) return;
     const meta = item.querySelector('.ci-meta');
     if (!meta) return;
     const txt = convMetaText(sess);
     if (meta.textContent !== txt) meta.textContent = txt;
+    // Z1: 类态与文案同拍——避免 busy→done 转换间隙只改字不改色
+    meta.classList.toggle('running', busy);
+    meta.classList.toggle('done', !busy && !!unseenDone[sess.id]);
   });
 }
 function syncConvTicker() {
@@ -3098,6 +3196,34 @@ function displayTitle(sess) {
   }
   return t('conv.defaultTitle');
 }
+/* §AJ 会话分叉: 标题自动递增「原名 (n)」——base 去尾部 (n) 后在现有会话名集内找最小空位（n≥2）。 */
+function forkTitleFor(src) {
+  const base = displayTitle(src).replace(/\s*\((\d+)\)\s*$/, '').trim() || t('conv.defaultTitle');
+  const taken = new Set([...state.sessions.values()].map(s => displayTitle(s).trim()));
+  let n = 2;
+  while (taken.has(`${base} (${n})`)) n++;
+  return `${base} (${n})`;
+}
+/* 桥端 /fork 深拷 messages+llm_history; 前端以空 messages 入列（紧邻源会话之后）,
+   setActiveSession 命中 sessionNeedsHydrate 走既有 hydrate 拉全量——零新装载路径。 */
+async function forkSession(src) {
+  if (!src?.bridgeSessionId || !state.bridgeReady) { showError(t('err.forkSession')); return; }
+  const title = forkTitleFor(src);
+  try {
+    const res = await fetch(`${BRIDGE_ORIGIN}/session/${encodeURIComponent(src.bridgeSessionId)}/fork`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+    }).then(r => r.json());
+    const sid = res?.sessionId;
+    if (!sid) throw new Error(res?.error || 'fork failed');
+    const sess = { id: sid, bridgeSessionId: sid, title, messages: [], untitled: false, lastActiveTs: Date.now(), llmNo: src.llmNo };
+    const m = new Map();
+    for (const [k, v] of state.sessions) { m.set(k, v); if (k === src.id) m.set(sid, sess); }
+    if (!m.has(sid)) m.set(sid, sess);
+    state.sessions = m;
+    saveSessions();
+    setActiveSession(sid);
+  } catch (e) { showError(t('err.forkSession') + ': ' + (e.message || e)); }
+}
 async function newSession() {
   const localId = 'local-' + Date.now() + '-' + Math.random().toString(16).slice(2);
   const sess = { id: localId, bridgeSessionId: null, title: '', messages: [], untitled: true, lastActiveTs: Date.now() };
@@ -3111,6 +3237,22 @@ async function newSession() {
   setActiveSession(sess.id);
   saveSessions();
   renderSessionList();
+}
+/* §AA: 新对话=草稿态（对标 Cursor/ChatGPT）——只切到空聊天窗，不落本地行、不打桥接；
+   真实创建点=sendPrompt/上传的 !activeId 惰性 newSession 兜底（首次输入）。
+   离开路径: setActiveSession（点行/发送后创建）自动退出草稿态。 */
+function openDraftChat() {
+  draftChat = true;
+  setSessionLoading(false);
+  state.activeId = null;
+  localStorage.removeItem('ga_active');
+  if (msgsEl) msgsEl.innerHTML = '';
+  refreshEmptyState(null);   // 显起始空态 + syncChatHead→标题带显「新对话」
+  refreshPlanBar(null);
+  syncPlanPollTimer();
+  refreshStatusLabel();
+  renderSessionList();       // 签名含 activeId, 清活跃行高亮
+  if (inputEl) inputEl.focus();
 }
 function sessionNeedsHydrate(sess) {
   return !!(sess?.bridgeSessionId && state.bridgeReady && !sess.messages.length);
@@ -3128,6 +3270,7 @@ function runSessionHydrate(sess) {
 }
 
 function setActiveSession(id) {
+  draftChat = false;  // §AA: 任何真实会话激活即退出草稿态
   setSessionLoading(false);
   state.activeId = id;
   if (id) localStorage.setItem('ga_active', id);  // 持久化当前会话，刷新后固定恢复它
@@ -3160,6 +3303,7 @@ function setActiveSession(id) {
     restoreElapsedBadges(sess, ensureMsgs());
     planPoll(sess);
   }
+  syncSendMode();
 }
 async function closeSession(id) {
   const sess = state.sessions.get(id);
@@ -3240,8 +3384,7 @@ convListEl.addEventListener('click', (e) => {
   const it = e.target.closest('.conv-item');
   if (it && it.dataset.id) {
     setActiveSession(it.dataset.id);
-    const chatNav = nav.querySelector('.nav-item[data-page="chat"]');
-    if (chatNav && !chatNav.classList.contains('active')) chatNav.click();
+    gaGoPage('chat');
   }
 });
 /* W1 抽取：置顶切换——conv-menu 与 chat-head 两入口共用（UX_SPEC §W1.1，范围含持久化三行 GW0-S1） */
@@ -3317,15 +3460,30 @@ function beginRenameSession(sess) {
   });
   inp.addEventListener('blur', () => finish(true));
 }
-/* W3.5v3: 标题栏会话操作绑定（置顶/改名与 conv-menu 同函数; 双击标题=改名保留在 tb-title）；
+/* Z1: 置顶/改名入口收束到侧栏 ctx（ci-more / 右键）；双击 tb-title 仍改名（成熟产品常见捷径）。
    pin 条点击=回底直达最新往来（用户主动动作, V2 滚动写者白名单内——与 sn-down 同语义） */
 {
-  const chPin = document.getElementById('ch-pin');
-  const chRename = document.getElementById('ch-rename');
   const tbTitle = document.getElementById('tb-title');
-  chPin?.addEventListener('click', () => { const s = activeSess(); if (s) togglePinSession(s); });
-  chRename?.addEventListener('click', () => { const s = activeSess(); if (s) beginRenameSession(s); });
   tbTitle?.addEventListener('dblclick', () => { const s = activeSess(); if (s) beginRenameSession(s); });
+  /* §AH: 标题字自有拖拽（阈值制）——不能挂 data-tauri-drag-region: 注入脚本对 drag-region 的双击走
+     toggle-maximize 与改名双触发; 也不能首击即 startDragging: macOS performWindowDrag 会把该点
+     升格为系统标题栏, 第二击触发系统级双击缩放（真机实证, 绕开 DOM）。唯一解=移动超阈值才起拖:
+     双击零位移永不进入拖拽会话（纯改名）, 按住拖动照常拖窗。长会话名占带中央数百 px, 不自绑则成死区。 */
+  tbTitle?.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.detail !== 1) return;
+    const sx = e.screenX, sy = e.screenY;
+    const cleanup = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', cleanup);
+    };
+    const onMove = (ev) => {
+      if (Math.abs(ev.screenX - sx) + Math.abs(ev.screenY - sy) < 4) return;
+      cleanup();
+      window.__TAURI__?.window?.getCurrentWindow?.()?.startDragging?.().catch(() => {});
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', cleanup);
+  });
   document.getElementById('ch-lastmsg')?.addEventListener('click', () => {
     const sn = document.getElementById('sn-down');
     if (sn) { sn.classList.remove('done'); }
@@ -3341,6 +3499,10 @@ convMenu.addEventListener('click', (e) => {
   } else if (sess && act === 'rename') {
     hideConvMenu();
     beginRenameSession(sess);
+    return;
+  } else if (sess && act === 'fork') {
+    hideConvMenu();
+    forkSession(sess);
     return;
   } else if (sess && act === 'del') {
     /* GU4 整改：删除加 danger 确认——与模型删除(showConfirmDialog okKind:'danger')对齐。
@@ -3374,16 +3536,16 @@ convListEl.addEventListener('keydown', (e) => {
   item.click();
 });
 // 合并单栏后新对话按钮全页面可见：点击同时切回聊天页（UX_SPEC §5 ⌘N 等价此路径）
+// §AA: 只切草稿空窗，不立即建会话（先切页再进草稿态, 使 composer 可聚焦）
 newConvBtn.addEventListener('click', (e) => {
   e.preventDefault();
-  newSession();
-  const chatNav = nav.querySelector('.nav-item[data-page="chat"]');
-  if (chatNav && !chatNav.classList.contains('active')) chatNav.click();
+  gaGoPage('chat');
+  openDraftChat();
 });
 /* U4: 全局快捷键（UX_SPEC §5）——⌘K/Ctrl+K 聚焦搜索、⌘N/Ctrl+N 新对话；
    IME 组合期间忽略；不占用 Shift/Alt 组合；Esc 单独绑在搜索框（见下），不进全局 Esc 链 */
 document.addEventListener('keydown', (e) => {
-  if (e.isComposing || e.repeat) return;  // GU4-S2: 长按防连发（⌘N 会打真桥接建会话）
+  if (e.isComposing || e.repeat) return;  // GU4-S2: 长按防连发（§AA 后 ⌘N 只切草稿窗, 守卫保留）
   // GU4-S1: 平台二选一——mac 只认 ⌘（不占 Ctrl+K 的 kill-line），其余平台只认 Ctrl
   const isMac = /mac/i.test(navigator.platform);
   const mod = isMac ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey);
@@ -3477,7 +3639,7 @@ function upsert(sess, raw, partial) {
         bubble.className = 'bubble md';
         r.draftEl.appendChild(bubble);
       }
-      bubble.innerHTML = renderAssistantTurnsHtml(segs, curr, false);
+      bubble.innerHTML = renderAssistantTurnsHtml(segs, curr, false, { stopped: m.stopped });
       postRenderEnhance(bubble);
     }
     const cursor = r.draftEl.querySelector('.cursor');
@@ -3720,32 +3882,79 @@ function setComposerLocked(on) {
   }
 }
 
-/** stapp.py 同款：运行中再发 → cancel 当前轮次，等 idle 后再提交新 prompt */
-async function interruptBeforeSend(sess) {
-  if (!rt(sess).busy) return true;
-  const t0 = Date.now();
-  setMsgLoading(true);
+/* §AK 消息队列：运行中再发不再 interruptBeforeSend（cancel 当前轮），改为入队，
+   当前轮 idle 后 FIFO 派出。空输入 + 运行中仍是停止（发送键 is-stop）。 */
+function nextQueueId() {
+  return 'q-' + Date.now().toString(36) + '-' + Math.random().toString(16).slice(2, 8);
+}
+function composerHasChatText() {
+  return !!(composerText('chat') || '').trim();
+}
+function syncSendMode() {
+  if (!sendBtn) return;
+  const sess = activeSess();
+  const stop = !!(sess && rt(sess).busy && !composerHasChatText());
+  sendBtn.classList.toggle('is-stop', stop);
+  sendBtn.setAttribute('aria-label', stop ? t('act.stop') : t('act.send'));
+  sendBtn.title = stop ? t('act.stop') : '';
+}
+function handleChatSend() {
+  const sess = activeSess();
+  if (sess && rt(sess).busy && !composerHasChatText()) { cancelPrompt(); return; }
+  submitInput();
+}
+function buildSendPayload(text) {
+  const composedPrompt = expandFilePlaceholders(text).trim();
+  const usedFiles = collectUsedFiles(text);
+  const userMsg = { role: 'user', content: text, ts: Date.now() / 1000 };
+  const previewImgs = usedFiles.filter(f => f.isImage).map(f => ({ id: 'f-' + f.sid, name: f.name, path: f.path, dataUrl: f.dataUrl || '' }));
+  if (previewImgs.length) userMsg.images = previewImgs;
+  const previewFiles = usedFiles.filter(f => !f.isImage).map(f => ({ id: 'f-' + f.sid, name: f.name, path: f.path }));
+  if (previewFiles.length) userMsg.files = previewFiles;
+  return { text, composedPrompt, usedFiles, userMsg, previewImgs, previewFiles };
+}
+function enqueuePrompt(sess, payload) {
+  const r = rt(sess);
+  const qid = nextQueueId();
+  payload.qid = qid;
+  payload.userMsg.queued = true;
+  payload.userMsg.qid = qid;
+  sess.messages.push(payload.userMsg);
+  appendMessage(sess, payload.userMsg);
+  (r.msgQueue || (r.msgQueue = [])).push(payload);
+  sess.lastActiveTs = Date.now();
+  saveSessions();
+  renderSessionList();
+}
+function dismissQueued(sess, qid) {
+  if (!sess || !qid) return;
+  const r = rt(sess);
+  r.msgQueue = (r.msgQueue || []).filter(p => p.qid !== qid);
+  const idx = sess.messages.findIndex(m => m.qid === qid && m.queued);
+  if (idx >= 0) sess.messages.splice(idx, 1);
+  msgsEl?.querySelector(`.msg.user[data-qid="${qid}"]`)?.remove();
+  refreshEmptyState(sess);
+}
+function markQueuedLive(userMsg) {
+  userMsg.queued = false;
+  const el = userMsg.qid ? msgsEl?.querySelector(`.msg.user[data-qid="${userMsg.qid}"]`) : null;
+  if (!el) return null;
+  el.classList.remove('msg-queued');
+  el.querySelector('.msg-q-badge')?.remove();
+  return el;
+}
+async function drainMsgQueue(sess) {
+  const r = rt(sess);
+  if (!sess || r.busy || r._drainInFlight) return;
+  const next = (r.msgQueue || []).shift();
+  if (!next) return;
+  r._drainInFlight = true;
   try {
-    clearDraft(sess);
-    try {
-      const res = await window.ga.rpc('session/cancel', { sessionId: sess.bridgeSessionId || sess.id });
-      if (res?.error) throw new Error(res.error.message || res.error);
-    } catch (e) {
-      showChanToast(t('err.stop') + ': ' + (e.message || e), '', 'err');
-      return false;
-    }
-    showChanToast(t('sys.interruptPrev.hint'), '', 'info');
-    const idle = await waitSessionIdle(sess);
-    clearDraft(sess);
-    if (!idle) {
-      showChanToast(t('err.interruptTimeout'), '', 'err');
-      return false;
-    }
-    return true;
+    const idle = await waitSessionIdle(sess, 4000);
+    if (!idle || r.busy) { (r.msgQueue || (r.msgQueue = [])).unshift(next); return; }
+    await dispatchPrompt(sess, next, { fromQueue: true });
   } finally {
-    const wait = Math.max(0, MIN_MSG_LOADING_MS - (Date.now() - t0));
-    if (wait) await new Promise(r => setTimeout(r, wait));
-    setMsgLoading(false);
+    r._drainInFlight = false;
   }
 }
 
@@ -3755,31 +3964,28 @@ async function sendPrompt(text) {
   if (!text) return false;
   if (!state.bridgeReady) { showError(t('err.bridge')); return false; }
   if (!state.activeId) { await newSession(); if (!state.activeId) return false; }
-  const sess = activeSess(); const r = rt(sess);
-  if (r.busy) {
-    const interrupted = await interruptBeforeSend(sess);
-    if (!interrupted) return false;
+  const sess = activeSess();
+  const payload = buildSendPayload(text);
+  if (rt(sess).busy) { enqueuePrompt(sess, payload); return true; }
+  return dispatchPrompt(sess, payload, { fromQueue: false });
+}
+async function dispatchPrompt(sess, payload, opts = {}) {
+  const r = rt(sess);
+  const { text, composedPrompt, usedFiles, userMsg, previewImgs, previewFiles } = payload;
+  let userEl = null;
+  if (opts.fromQueue) {
+    userEl = markQueuedLive(userMsg);
+  } else {
+    sess.messages.push(userMsg);
+    appendMessage(sess, userMsg);
+    userEl = msgsEl ? msgsEl.lastElementChild : null;
   }
-  // PLAN/AUTO 现在是预设功能（preset 卡片）一次性发送，不再是常驻 prefix
-  const composedPrompt = expandFilePlaceholders(text).trim();
-  const usedFiles = collectUsedFiles(text);
-  const userMsg = { role: 'user', content: text, ts: Date.now() / 1000 };
-  const previewImgs = usedFiles.filter(f => f.isImage).map(f => ({ id: 'f-' + f.sid, name: f.name, path: f.path, dataUrl: f.dataUrl || '' }));
-  if (previewImgs.length) userMsg.images = previewImgs;
-  const previewFiles = usedFiles.filter(f => !f.isImage).map(f => ({ id: 'f-' + f.sid, name: f.name, path: f.path }));
-  if (previewFiles.length) userMsg.files = previewFiles;
-  sess.messages.push(userMsg); appendMessage(sess, userMsg);
   sess.lastActiveTs = Date.now();
-  // 仿 TUI:不再从首条消息自动改名 —— 标题在 newSession 时已设为 agent-N,
-  // 之后只接受用户手动 rename。
   saveSessions();
+  renderSessionList();
   setBusy(sess, true);
-  /* V2: 发送即钉顶——预建回复空壳作槽位 box（GV0-B2；置于 setBusy 后使 taskStartedAt 就绪、badge 可挂），
-     user 气泡 alignTop 顶置，流式在槽位内填充零移动。非聊天页发送（快捷路径）不钉。 */
   if (isActive(sess) && currentPage === 'chat') {
-    // 上一轮槽位 minHeight 到此才清（任务结束时收槽会抽走阅读者脚下的地毯，故延迟到下轮发送重算）
     if (msgsEl) msgsEl.querySelectorAll(':scope > .msg[style*="min-height"]').forEach(n => { n.style.minHeight = ''; });
-    const userEl = msgsEl ? msgsEl.lastElementChild : null;
     const shell = ensureDraftShell(sess);
     if (userEl && shell) pinReplyTop(userEl, shell);
   }
@@ -3795,7 +4001,7 @@ async function sendPrompt(text) {
         sess.id = sess.bridgeSessionId;
         state.sessions.set(sess.id, sess);
         state.activeId = sess.id;
-        localStorage.setItem('ga_active', sess.id);  // 会话 id 因 bridge 重建而变更，同步持久化
+        localStorage.setItem('ga_active', sess.id);
       }
     }
     const res = await window.ga.rpc('session/prompt', { sessionId: sid, prompt: composedPrompt, display: text,
@@ -3814,7 +4020,7 @@ async function sendPrompt(text) {
   } catch (e) {
     const em = { role: 'error', content: e.message || String(e) };
     sess.messages.push(em); appendMessage(sess, em);
-    setBusy(sess, false, { fromError: true });  // U3: 发送失败≠完成，豁免未读标记(GU0-S1')
+    setBusy(sess, false, { fromError: true });
     return false;
   }
 }
@@ -3856,13 +4062,12 @@ async function submitInput() {
     _submitInFlight = false;
     setComposerLocked(false);
     syncAskUserUi();
+    syncSendMode();
   }
 }
 sendBtn.addEventListener('click', (e) => {
   e.preventDefault();
-  const sess = activeSess();
-  if (sess && rt(sess).busy) { cancelPrompt(); return; }  // 运行中：发送键是录制键 → 纯停止
-  submitInput();
+  handleChatSend();
 });
 inputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); submitInput(); }
@@ -3881,10 +4086,10 @@ function showError(text) {
 let _toastTimer = null;
 /* U3: 扩展可点击 toast（UX_SPEC §4）。单例元素复用——onclick 用赋值式覆盖，
    禁 addEventListener 叠加（GU0-S5）；不传 onClick 时与旧行为完全一致（1.8s 自动消失）。 */
-/* W2.3 toast 结构件图标（内联线条 SVG；styles.css 之外不受 token 断言约束） */
-const SVG_TOAST_DONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-const SVG_TOAST_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
-const SVG_TOAST_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+/* W2.3→§AB: toast 结构件图标统一 Phosphor（gaIcon 单一图标通道） */
+const SVG_TOAST_DONE = GA_ICON('check');
+const SVG_TOAST_CHEVRON = GA_ICON('caretRight');
+const SVG_TOAST_X = GA_ICON('x');
 function showToast(text, opts = {}) {
   if (typeof opts !== 'object' || opts === null) opts = {};  // 兼容历史第二参为字符串的调用（charLimit 'warn'）
   let el = document.getElementById('ga-toast');
@@ -4041,7 +4246,7 @@ function slashCommandName(text) {
 async function handleSlash(name) {
   switch (name) {
     case 'help': showSystem(t('slash.help')); break;
-    case 'new': await newSession(); break;
+    case 'new': openDraftChat(); break;  // §AA: 与新对话钮同语义——草稿态, 输入才创建
     case 'clear': { const s = activeSess(); if (s) { s.messages = []; renderAllMessages(s); } break; }
     case 'stop': if (await cancelPrompt()) showSystem(t('sys.stopRequested')); break;
     case 'settings': openSettings(); break;
@@ -4328,6 +4533,8 @@ function openAddModelForm() {
   if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
   openModal('add-model-modal');
   applyI18n();
+  const nameInput = form && form.querySelector('input[name="model"]');
+  if (nameInput) setTimeout(() => nameInput.focus(), 60);  /* §AF: 开窗即可打字（快速接入路径同款 60ms 待入场） */
 }
 async function openEditModelForm(id) {
   editingModelId = id;
@@ -4985,6 +5192,7 @@ function bindComposerUpload(ctx) {
     // 内容清空后浏览器可能残留 <br>，抹掉以便 :empty 占位提示生效
     if (!cfg.input.textContent.trim() && !cfg.input.querySelector('.ph-chip')) cfg.input.innerHTML = '';
     reconcilePendingFiles(ctx);  // chip 被删 → 同步清理附件 + 删磁盘文件
+    if (ctx === 'chat') syncSendMode();
   });
   const zone = cfg.dropZone;
   const dropKey = `dropBound_${ctx}`;
@@ -5386,7 +5594,7 @@ const BUILTIN_PRESETS = [
 ];
 const ADD_ICON_SVG = GA_ICON('plus', 'fc-ic');
 // 自定义保存后生成的卡片图标（用户图标，表示"用户自定义的任务"）—— 与"添加"卡的 + 区分
-const CUSTOM_ICON_SVG = '<svg class="fc-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+const CUSTOM_ICON_SVG = GA_ICON('user', 'fc-ic');
 
 state.customPresets = [];
 state.hiddenBuiltins = new Set();
@@ -5412,7 +5620,7 @@ function saveHiddenBuiltins() {
   localStorage.setItem(HB_KEY, JSON.stringify([...state.hiddenBuiltins]));
 }
 
-const EDIT_PENCIL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const EDIT_PENCIL_SVG = GA_ICON('pencilSimple');
 function makeCardEl({ kind, dataAttrs, iconSvg, titleText, descText, removable, editable }) {
   const card = document.createElement('div');
   card.className = 'fcard ' + kind;
@@ -5605,13 +5813,17 @@ const lightbox    = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
 function openLightbox(src) {
   if (!lightbox || !lightboxImg || !src) return;
+  gaPrepareOpen(lightbox);  // #033 B1: 与 openModal 同守卫，防 <150ms 重开幽灵关闭
   lightboxImg.src = src;
   lightbox.hidden = false;
 }
 function closeLightbox() {
   if (!lightbox || !lightboxImg) return;
   gaCloseModal(lightbox);  // §Y1.2 lightbox 同走退场(无 modal-card 时动画挂自身)
-  lightboxImg.src = '';
+  // O1: 退场期内保留 src，收口后再清——避免 150ms 淡出只见空背板
+  const img = lightboxImg;
+  const clear = () => { if (lightbox.hidden) img.src = ''; };
+  setTimeout(clear, 160);
 }
 if (lightbox) {
   lightbox.addEventListener('click', (e) => {
@@ -5957,14 +6169,14 @@ function renderChannelList(channels) {
         <b class="chan-name"></b>
         <span class="kv chan-path"></span>
       </div>
-      <span class="lr-st ${stClass} chan-status"></span>
       <span class="grow"></span>
+      <span class="lr-st ${stClass} chan-status"><i class="lr-dot" aria-hidden="true"></i><span class="lr-st-t"></span></span>
       <button type="button" class="link-btn link sm" data-act="configure"></button>
       <button type="button" class="link-btn link sm" data-act="logs"></button>
       <button type="button" class="sw-mini${running ? ' on' : ''}" data-act="toggle" aria-pressed="${running}"><i></i></button>`;
     row.querySelector('.chan-name').textContent = channelDisplayName(ch);
     row.querySelector('.chan-path').textContent = ch.name || ch.id;
-    row.querySelector('.chan-status').textContent = channelStatusLabel(ch.status || 'offline');
+    row.querySelector('.chan-status .lr-st-t').textContent = channelStatusLabel(ch.status || 'offline');
     row.querySelector('[data-act="configure"]').textContent = t('act.configure');
     row.querySelector('[data-act="logs"]').textContent = t('act.logs');
     chanListEl.appendChild(row);
@@ -6140,13 +6352,13 @@ function renderStatusPanel(services) {
     }
     row.innerHTML = `
       <b class="st-name"></b>
-      <span class="lr-st ${stClass} st-status"></span>
+      <span class="lr-st ${stClass} st-status"><i class="lr-dot" aria-hidden="true"></i><span class="lr-st-t"></span></span>
       <span class="kv st-pid"></span>
       <span class="kv st-res"></span>
       <span class="grow"></span>
       ${acts}`;
     row.querySelector('.st-name').textContent = statusDisplayName(s);
-    row.querySelector('.st-status').textContent = channelStatusLabel(s.status || 'offline');
+    row.querySelector('.st-status .lr-st-t').textContent = channelStatusLabel(s.status || 'offline');
     row.querySelector('.st-pid').textContent = fmtPid(s.pid);
     row.querySelector('.st-res').textContent = fmtRes(s);
     const logBtn = row.querySelector('[data-act="logs"]');
@@ -6387,11 +6599,7 @@ function bindComposerInRoot(root, opts) {
   const root = document.getElementById('chat-composer');
   const bound = bindComposerInRoot(root, {
     ctx: 'chat',
-    onSend() {
-      const sess = activeSess();
-      if (sess && rt(sess).busy) { cancelPrompt(); return; }
-      submitInput();
-    },
+    onSend() { handleChatSend(); },
   });
   if (bound) window.chatComposer = { closeMenu: bound.closeMenu, focus: bound.focus };
 })();
@@ -6864,23 +7072,53 @@ function bindComposerInRoot(root, opts) {
   window.collabRetranslate = () => { renderWorkers(); syncMessages(); setConnUi(); };
 })();
 
-/* ═══════════════ Composer layout: inline / stacked ═══════════════ */
+/* ═══════════════ Composer layout: inline / stacked ═══════════════
+   §AB: 单行阈值由计算样式派生（原魔数 36 恒小于实际单行 scrollHeight≈40, is-inline 永不触发） */
 (function initComposerLayout() {
   const BREAKPOINT = 480;
-  const SINGLE_LINE = 36;
+  const singleLineMax = (input) => {
+    const cs = getComputedStyle(input);
+    return parseFloat(cs.lineHeight) + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 2;
+  };
 
   document.querySelectorAll('.composer-inset').forEach(inset => {
     const input = inset.querySelector('.input');
     if (!input) return;
 
-    function update() {
+    const update = () => {
       const wide = inset.offsetWidth >= BREAKPOINT;
-      const single = input.scrollHeight <= SINGLE_LINE;
+      inset.classList.remove('is-inline');  // 全宽规范测量, 防行内窄列引发单/多行振荡
+      const single = input.scrollHeight <= singleLineMax(input);
       inset.classList.toggle('is-inline', wide && single);
-    }
+    };
 
     new ResizeObserver(update).observe(inset);
     input.addEventListener('input', update);
     update();
   });
+})();
+
+/* ═══════════════ §AE: 全屏联动——红绿灯自隐时 tb-side 让位收回（开关贴左） ═══════════════
+   读取器 isFullscreen 属 core:window:default 授权面, 无需壳改动; 非壳环境（浏览器/取证）无红绿灯, 不联动。
+   seq 令牌防快速进出全屏时异步应答乱序回写。
+   退全屏的 AX 标志翻转晚于 WKWebView 末次 resize（真机实拍抓到开关 12px 残留压红绿灯）——
+   末次 resize 后 600ms 尾随复查一次; focus 同触发（出入全屏必伴焦点变化）双兜底。 */
+(function initFullscreenSync() {
+  const win = window.__TAURI__?.window?.getCurrentWindow?.();
+  if (!win?.isFullscreen) return;
+  let seq = 0, trail = 0;
+  const query = () => {
+    const n = ++seq;
+    win.isFullscreen()
+      .then(fs => { if (n === seq) document.body.classList.toggle('is-fullscreen', fs); })
+      .catch(() => {});
+  };
+  const sync = () => {
+    query();
+    clearTimeout(trail);
+    trail = setTimeout(query, 600);
+  };
+  window.addEventListener('resize', sync);
+  window.addEventListener('focus', sync);
+  sync();
 })();

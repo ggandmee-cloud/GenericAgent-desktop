@@ -23,6 +23,8 @@
     'composer.placeholder': 'GA 能帮你做些什么？',
     'search.placeholder': '搜索会话…', 'conv.new': '新对话', 'sb.toggle': '侧栏开关',
     'ctx.pin': '置顶', 'ctx.unpin': '取消置顶', 'ctx.rename': '重命名', 'ctx.del': '删除',
+    'ctx.fork': '复制会话', 'err.forkSession': '复制会话失败',  /* §AJ 分叉 */
+    'msg.queued': '排队中', 'msg.queuedDismiss': '取消排队',  /* §AK 消息队列 */
     'common.close': '关闭', 'common.more': '更多', 'common.optional': '选填', 'common.save': '保存',
     'modal.preset': '预设功能', 'modal.addModel': '添加模型', 'modal.editModel': '编辑模型', 'modal.settings': '配置',
     'modal.customPreset': '自定义预设',
@@ -143,6 +145,10 @@
     'upload.dropHint': '松开以上传文件',
     'lightbox.closeTitle': '关闭',
     'fold.thinking': '思考', 'fold.tool': '工具调用', 'fold.toolResult': '工具结果', 'fold.llm': 'LLM Running', 'fold.turn': '第 {n} 轮',
+    'fold.proc': '执行过程（{n} 轮）', 'fold.procAborted': '已中断 · 已完成 {n} 轮',  /* §AJ 过程/结果分离（对齐手机 stepFoldHead） */
+    'tool.runPy': '运行 Python', 'tool.runSh': '运行 Shell', 'tool.runCode': '运行代码',
+    'tool.fileRead': '读取文件', 'tool.fileWrite': '写入文件', 'tool.filePatch': '修改文件',
+    'tool.webJs': '执行网页脚本', 'tool.webScan': '扫描网页', 'tool.checkpoint': '更新检查点', 'tool.askUser': '向你提问',
     'plan.header': '计划 ({done}/{total})', 'plan.complete': '✓ 计划完成 ({n}/{n})',
     'plan.running': '计划执行中', 'plan.completeTitle': '计划完成',
     'plan.placeholder': '计划模式已激活', 'plan.waiting': '等待写入 {path} …', 'plan.overflow': '还有 {n} 项',
@@ -232,6 +238,8 @@
     'composer.placeholder': 'What can GA do for you?',
     'search.placeholder': 'Search chats…', 'conv.new': 'New chat', 'sb.toggle': 'Toggle sidebar',
     'ctx.pin': 'Pin', 'ctx.unpin': 'Unpin', 'ctx.rename': 'Rename', 'ctx.del': 'Delete',
+    'ctx.fork': 'Duplicate', 'err.forkSession': 'Duplicate failed',  /* §AJ */
+    'msg.queued': 'Queued', 'msg.queuedDismiss': 'Remove from queue',  /* §AK */
     'common.close': 'Close', 'common.more': 'More', 'common.optional': 'Optional', 'common.save': 'Save',
     'modal.preset': 'Presets', 'modal.addModel': 'Add model', 'modal.editModel': 'Edit model', 'modal.settings': 'Settings',
     'modal.customPreset': 'Custom preset',
@@ -352,6 +360,10 @@
     'upload.dropHint': 'Drop to upload files',
     'lightbox.closeTitle': 'Close',
     'fold.thinking': 'Thinking', 'fold.tool': 'Tool call', 'fold.toolResult': 'Tool result', 'fold.llm': 'LLM Running', 'fold.turn': 'Turn {n}',
+    'fold.proc': 'Steps ({n} turns)', 'fold.procAborted': 'Aborted · {n} turns done',  /* §AJ */
+    'tool.runPy': 'Run Python', 'tool.runSh': 'Run Shell', 'tool.runCode': 'Run code',
+    'tool.fileRead': 'Read file', 'tool.fileWrite': 'Write file', 'tool.filePatch': 'Patch file',
+    'tool.webJs': 'Run page script', 'tool.webScan': 'Scan page', 'tool.checkpoint': 'Update checkpoint', 'tool.askUser': 'Ask you',
     'plan.header': 'Plan ({done}/{total})', 'plan.complete': '✓ Plan complete ({n}/{n})',
     'plan.running': 'Running plan', 'plan.completeTitle': 'Plan complete',
     'plan.placeholder': 'Plan mode activated', 'plan.waiting': 'waiting for {path} …', 'plan.overflow': '+{n} more',

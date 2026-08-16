@@ -717,6 +717,29 @@ class AgentManager:
                 raise web.HTTPNotFound(text=json.dumps({"error": f"session not found: {sid}"}, ensure_ascii=False), content_type="application/json")
             return sess
 
+    def fork_session(self, sid: str, title: str = "") -> Session:
+        """§AJ 会话分叉: 复制 messages+llm_history+llm_no 到新 sid, 不建 agent——
+        首次发送走既有 /restore 路径按 llm_history 重建上下文(含工具轮全量, 分叉不失忆)。
+        running 中源会话的 partial(进行中轮)不带走, 分叉点=已落格消息。"""
+        import copy as _copy
+        with self.lock:
+            src = self.sessions.get(sid)
+            if not src:
+                raise web.HTTPNotFound(text=json.dumps({"error": f"session not found: {sid}"}, ensure_ascii=False), content_type="application/json")
+            new_sid = "sess-" + uuid.uuid4().hex[:12]
+            sess = Session(id=new_sid, cwd=src.cwd, llm_no=src.llm_no)
+            sess.title = (title or "").strip() or (src.title + " (2)")
+            sess.untitled = False
+            sess.messages = _copy.deepcopy(src.messages)
+            sess.msg_seq = src.msg_seq
+            sess.llm_history = _copy.deepcopy(src.llm_history) if src.llm_history else None
+            sess.plan_scan_baseline = src.plan_scan_baseline
+            sess.plan_path = src.plan_path
+            self.sessions[new_sid] = sess
+        emit_session_state(sess, "created")
+        self._persist_session(sess)
+        return sess
+
     def delete_session(self, sid: str) -> dict:
         with self.lock:
             sess = self.sessions.pop(sid, None)
@@ -1040,6 +1063,90 @@ class WsHub:
 
 
 hub = WsHub()
+
+
+# ---------------------------------------------------------------------------
+# GA hub link: joins the machine-local bus so the phone chain works end to end
+# (hub bus/panel + hub_p2p pairing + mobile pclink proxying the hub API).
+# ---------------------------------------------------------------------------
+
+def _wire_ga_hub(mgr: AgentManager):
+    """Register this bridge on the GA hub as fixed peer 'desktop' (stapp parity).
+
+    The hub speaks one linear task list per peer, so the desktop's face is the
+    session the user most plausibly cares about: the newest *running* one, else
+    the most recently updated. Mapping: hub task = one user turn; its steps are
+    the paired assistant message's turn_segs (taken live from sess.partial while
+    the turn runs, so a phone can tail step bodies mid-flight).
+
+    put -> submit into that session through the same entrance as a typed prompt
+    (running -> hub 'busy' per contract: a remote must not cut in line; no
+    session at all -> create one, so a phone can kick off an empty desktop).
+    Never raises: the hub is optional and must not disturb its host."""
+    try:
+        if str(APP_DIR) not in sys.path:
+            sys.path.insert(0, str(APP_DIR))
+        import hub as ga_hub  # sibling frontends/hub.py; bare name is taken by WsHub above
+
+        def _target() -> Optional[Session]:
+            with mgr.lock:
+                ss = list(mgr.sessions.values())
+            pool = [s for s in ss if s.status == "running"] or ss
+            return max(pool, key=lambda s: s.updated_at) if pool else None
+
+        def _tasks() -> list:
+            s = _target()
+            if not s:
+                return []
+            with mgr.lock:
+                msgs = [dict(m) for m in s.messages]
+                live = (list((s.partial or {}).get("turn_segs") or [])
+                        if s.status == "running" else [])
+            tasks: list = []
+            for m in msgs:
+                role = m.get("role")
+                if role == "user":
+                    tasks.append({"input": m.get("display") or m.get("content") or "",
+                                  "outputs": []})
+                elif role in ("assistant", "error"):
+                    if not tasks:  # imported/trimmed history may open mid-turn
+                        tasks.append({"input": "", "outputs": []})
+                    segs = m.get("turn_segs") or ([m["content"]] if m.get("content") else [])
+                    tasks[-1]["outputs"].extend(str(x) for x in segs)
+            if live and tasks and not tasks[-1]["outputs"]:
+                tasks[-1]["outputs"] = [str(x) for x in live]
+            return tasks
+
+        def _put(text: str):
+            s = _target()
+            if s is not None and s.status == "running":
+                return {"error": "desktop is busy", "code": "busy"}
+            try:
+                sid = s.id if s is not None else mgr.create_session().id
+                mgr.submit_prompt(sid, text)
+            except web.HTTPConflict:
+                return {"error": "desktop is busy", "code": "busy"}
+            except Exception as e:
+                return {"error": str(e) or type(e).__name__, "code": "badop"}
+
+        def _abort():
+            s = _target()
+            if s is not None and s.status == "running":
+                mgr.cancel(s.id)  # abort what the phone is looking at, nothing else
+
+        def _state() -> dict:
+            with mgr.lock:
+                return {"run": any(s.status == "running" for s in mgr.sessions.values())}
+
+        try:
+            ga_hub.serve()  # best effort: bring up a local hub if none listens (port is the lock)
+        except Exception:
+            pass
+        ga_hub.HubClient("desktop", put_task=_put, get_outputs=_tasks, abort=_abort,
+                         state=_state, fixed=True).start()
+        print("[bridge] ga-hub peer 'desktop' wiring up", file=sys.stderr)
+    except Exception as e:
+        print(f"[bridge] ga-hub link skipped: {e}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -1628,6 +1735,13 @@ async def restore_handler(request):
     return json_ok(manager.restore_context(sid))
 
 
+async def fork_session_handler(request):
+    sid = request.match_info["sid"]
+    data = await read_json(request)
+    sess = manager.fork_session(sid, title=str(data.get("title") or ""))
+    return json_ok({"ok": True, "sessionId": sess.id, "session": manager.snapshot(sess)}, status=201)
+
+
 async def session_model_handler(request):
     sid = request.match_info["sid"]
     data = await read_json(request)
@@ -1643,6 +1757,38 @@ async def session_model_handler(request):
 async def plan_handler(request):
     sid = request.match_info["sid"]
     return json_ok(manager.plan_snapshot(sid))
+
+
+def _open_url_in_browser(url: str) -> None:
+    """§AL: 用系统默认浏览器打开 http(s)。list 形 subprocess，不经 shell。"""
+    import platform
+    if platform.system() == "Windows":
+        os.startfile(url)
+        return
+    if platform.system() == "Darwin":
+        subprocess.Popen(["open", url])
+        return
+    subprocess.Popen(["xdg-open", url])
+
+
+async def open_url_handler(request):
+    """Cmd/Ctrl+点击链接：只放行 http(s)+host，拒 javascript/file/data。"""
+    from urllib.parse import urlparse
+    data = await read_json(request)
+    url = str(data.get("url") or "").strip()
+    if len(url) > 2048:
+        return json_ok({"ok": False, "error": "url too long"}, status=400)
+    try:
+        p = urlparse(url)
+    except ValueError:
+        return json_ok({"ok": False, "error": "invalid url"}, status=400)
+    if p.scheme not in ("http", "https") or not p.netloc:
+        return json_ok({"ok": False, "error": "only http(s) urls"}, status=400)
+    try:
+        _open_url_in_browser(url)
+    except OSError as e:
+        return json_ok({"ok": False, "error": str(e)}, status=500)
+    return json_ok({"ok": True})
 
 
 async def path_open_handler(request):
@@ -2155,8 +2301,10 @@ def create_app():
     app.router.add_get("/session/{sid}/plan", plan_handler)
     app.router.add_post("/session/{sid}/cancel", cancel_handler)
     app.router.add_post("/session/{sid}/restore", restore_handler)
+    app.router.add_post("/session/{sid}/fork", fork_session_handler)
     app.router.add_post("/session/{sid}/model", session_model_handler)
     app.router.add_post("/path/open", path_open_handler)
+    app.router.add_post("/open-url", open_url_handler)
     app.router.add_post("/upload", upload_handler)
     app.router.add_delete("/upload", upload_delete_handler)
     app.router.add_get("/upload/raw", upload_raw_handler)
@@ -2194,6 +2342,7 @@ def create_app():
     async def on_startup(app):
         hub.loop = asyncio.get_running_loop()
         services.autostart_extras()
+        _wire_ga_hub(manager)
 
     async def on_shutdown(app):
         services.stop_all_extras()
