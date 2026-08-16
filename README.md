@@ -1,3 +1,5 @@
+> 本仓库是桌面版工作树（非官方 [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent)）。如何运行、以及别人如何获取可选包（TokenPlan 导入 key），见 [DESKTOP.md](DESKTOP.md)。
+
 <div align="center">
 
 <img src="assets/images/bar.jpg" width="880" alt="GenericAgent Banner"/>
