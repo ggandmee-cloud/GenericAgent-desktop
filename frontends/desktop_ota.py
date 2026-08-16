@@ -34,23 +34,7 @@ def current_version(root: Path) -> str:
         return "unknown"
 
 
-def fetch_latest(repo: str = "") -> dict:
-    # 不用 /releases/latest：它跳过 prerelease。扫最新 releases，取第一个带
-    # runtime 资产的 desktop-portable-* 条目（列表按创建时间倒序）。
-    url = f"https://api.github.com/repos/{repo or REPO}/releases?per_page=15"
-    with urllib.request.urlopen(urllib.request.Request(url, headers=_UA), timeout=20) as r:
-        releases = json.loads(r.read().decode("utf-8"))
-    data = {}
-    fallback = {}
-    for rel in releases if isinstance(releases, list) else []:
-        if rel.get("draft") or not str(rel.get("tag_name") or "").startswith(TAG_PREFIX):
-            continue
-        names = {a.get("name") for a in rel.get("assets", [])}
-        if ASSET in names:
-            data = rel
-            break
-        fallback = fallback or rel
-    data = data or fallback
+def _release_payload(data: dict) -> dict:
     tag = str(data.get("tag_name") or "")
     version = tag[len(TAG_PREFIX):] if tag.startswith(TAG_PREFIX) else tag
     assets = {a.get("name"): a for a in data.get("assets", []) if a.get("name")}
@@ -65,6 +49,47 @@ def fetch_latest(repo: str = "") -> dict:
         "assetSize": int(asset.get("size") or 0),
         "shaUrl": sha.get("browser_download_url") or "",
     }
+
+
+def _api_json(url: str):
+    with urllib.request.urlopen(urllib.request.Request(url, headers=_UA), timeout=20) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def fetch_latest(repo: str = "") -> dict:
+    """Pick the newest desktop-portable-* release that ships the runtime asset.
+
+    Do NOT trust GitHub's /releases list order (it is not reliably chronological).
+    Prefer /releases/latest when it has the asset; otherwise choose by published_at.
+    """
+    repo = repo or REPO
+    candidates = []
+
+    try:
+        latest = _api_json(f"https://api.github.com/repos/{repo}/releases/latest")
+        if (isinstance(latest, dict)
+                and not latest.get("draft")
+                and str(latest.get("tag_name") or "").startswith(TAG_PREFIX)
+                and any(a.get("name") == ASSET for a in latest.get("assets", []))):
+            return _release_payload(latest)
+    except Exception:
+        latest = None
+
+    releases = _api_json(f"https://api.github.com/repos/{repo}/releases?per_page=30")
+    for rel in releases if isinstance(releases, list) else []:
+        if rel.get("draft") or not str(rel.get("tag_name") or "").startswith(TAG_PREFIX):
+            continue
+        names = {a.get("name") for a in rel.get("assets", [])}
+        key = rel.get("published_at") or rel.get("created_at") or ""
+        if ASSET in names:
+            candidates.append((key, 1, rel))
+        else:
+            candidates.append((key, 0, rel))
+    if not candidates:
+        return _release_payload({})
+    # Prefer entries that have the runtime asset; then newest published_at.
+    candidates.sort(key=lambda x: (x[1], x[0]), reverse=True)
+    return _release_payload(candidates[0][2])
 
 
 def _is_protected(rel: str) -> bool:

@@ -1,6 +1,6 @@
 {
   "productName": "GenericAgent",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "identifier": "com.genericagent.app",
   "build": {
     "frontendDist": "../static"
