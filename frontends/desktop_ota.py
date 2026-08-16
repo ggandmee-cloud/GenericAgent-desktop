@@ -35,9 +35,22 @@ def current_version(root: Path) -> str:
 
 
 def fetch_latest(repo: str = "") -> dict:
-    url = f"https://api.github.com/repos/{repo or REPO}/releases/latest"
+    # 不用 /releases/latest：它跳过 prerelease。扫最新 releases，取第一个带
+    # runtime 资产的 desktop-portable-* 条目（列表按创建时间倒序）。
+    url = f"https://api.github.com/repos/{repo or REPO}/releases?per_page=15"
     with urllib.request.urlopen(urllib.request.Request(url, headers=_UA), timeout=20) as r:
-        data = json.loads(r.read().decode("utf-8"))
+        releases = json.loads(r.read().decode("utf-8"))
+    data = {}
+    fallback = {}
+    for rel in releases if isinstance(releases, list) else []:
+        if rel.get("draft") or not str(rel.get("tag_name") or "").startswith(TAG_PREFIX):
+            continue
+        names = {a.get("name") for a in rel.get("assets", [])}
+        if ASSET in names:
+            data = rel
+            break
+        fallback = fallback or rel
+    data = data or fallback
     tag = str(data.get("tag_name") or "")
     version = tag[len(TAG_PREFIX):] if tag.startswith(TAG_PREFIX) else tag
     assets = {a.get("name"): a for a in data.get("assets", []) if a.get("name")}
