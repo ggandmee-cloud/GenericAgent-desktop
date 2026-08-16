@@ -213,7 +213,9 @@ jobs:
           GenericAgent Desktop 桌面版 / Desktop
 
           无需自行安装 Python、无需联网安装依赖、无需源码；首次启动会自动准备内置运行环境。
+          本构建开箱即用 TokenPlan：设置里 GA Token 打开 https://plan.khrey.com/ 。
           No separate Python install, no internet for dependencies, no source checkout required; the bundled runtime is prepared on first launch.
+          TokenPlan import is enabled: GA Token in settings opens https://plan.khrey.com/ .
 
           ## 安装方法 / Installation
           - Windows: 下载 `GenericAgent-Desktop-Windows-Portable.zip`，解压后双击 `GenericAgent.exe` 启动。卸载时先退出应用，再双击包内 `uninstall.bat`，最后删除整个解压目录。
@@ -426,7 +428,9 @@ jobs:
           GenericAgent Desktop 桌面版 / Desktop
 
           无需自行安装 Python、无需联网安装依赖、无需源码；首次启动会自动准备内置运行环境。
+          本构建开箱即用 TokenPlan：设置里 GA Token 打开 https://plan.khrey.com/ 。
           No separate Python install, no internet for dependencies, no source checkout required; the bundled runtime is prepared on first launch.
+          TokenPlan import is enabled: GA Token in settings opens https://plan.khrey.com/ .
 
           ## 安装方法 / Installation
           - Windows: 下载 `GenericAgent-Desktop-Windows-Portable.zip`，解压后双击 `GenericAgent.exe` 启动。卸载时先退出应用，再双击包内 `uninstall.bat`，最后删除整个解压目录。
@@ -690,7 +694,9 @@ jobs:
           GenericAgent Desktop 桌面版 / Desktop
 
           无需自行安装 Python、无需联网安装依赖、无需源码；首次启动会自动准备内置运行环境。
+          本构建开箱即用 TokenPlan：设置里 GA Token 打开 https://plan.khrey.com/ 。
           No separate Python install, no internet for dependencies, no source checkout required; the bundled runtime is prepared on first launch.
+          TokenPlan import is enabled: GA Token in settings opens https://plan.khrey.com/ .
 
           ## 安装方法 / Installation
           - Windows: 下载 `GenericAgent-Desktop-Windows-Portable.zip`，解压后双击 `GenericAgent.exe` 启动。卸载时先退出应用，再双击包内 `uninstall.bat`，最后删除整个解压目录。
