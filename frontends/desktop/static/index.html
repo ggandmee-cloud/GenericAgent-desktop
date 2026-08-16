@@ -3,8 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <title>GenericAgent</title>
+<script>
+/* §AM: 平台早标——Windows 无红绿灯, 须在首屏 CSS 前收 --lights-w, 防 84px 空位闪一帧 */
+(function () {
+  var p = String((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '').toLowerCase();
+  var os = /mac|iphone|ipad/.test(p) ? 'mac' : /win/.test(p) ? 'win' : 'linux';
+  document.documentElement.setAttribute('data-os', os);
+})();
+</script>
 <link rel="stylesheet" href="assets/fonts/fonts.css?v=2">
-<link rel="stylesheet" href="styles.css?v=197">
+<link rel="stylesheet" href="styles.css?v=198">
 <!-- KaTeX: LaTeX 公式渲染 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
 <!-- highlight.js: 代码高亮 -->
@@ -61,6 +69,22 @@
       <!-- §AH: 标题字摘除拖拽区——注入脚本对 drag-region 的 detail==2 走 toggle-maximize,
            与双击改名双触发（真机实证缩放闪跳）; 标题=纯改名面, 周围 tb-main 全幅可拖 -->
       <span class="tb-title" id="tb-title"></span>
+    </div>
+    <!-- §AM: Windows 自绘 caption（tauri.windows.conf decorations:false）；mac 隐藏 -->
+    <div class="tb-win-ctrls" id="tb-win-ctrls" aria-hidden="true">
+      <button type="button" class="tb-win-btn" id="win-min" tabindex="-1" aria-label="Minimize">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 5h8" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+      </button>
+      <button type="button" class="tb-win-btn" id="win-max" tabindex="-1" aria-label="Maximize">
+        <svg class="win-ico-max" viewBox="0 0 10 10" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+        <svg class="win-ico-restore" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M3 3.5h5.5V9H3z" fill="none" stroke="currentColor" stroke-width="1"/>
+          <path d="M2 7V1.5h5.5V3" fill="none" stroke="currentColor" stroke-width="1"/>
+        </svg>
+      </button>
+      <button type="button" class="tb-win-btn tb-win-close" id="win-close" tabindex="-1" aria-label="Close">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+      </button>
     </div>
   </div>
 

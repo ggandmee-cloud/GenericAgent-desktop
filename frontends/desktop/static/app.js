@@ -7163,3 +7163,36 @@ function bindComposerInRoot(root, opts) {
   window.addEventListener('focus', sync);
   sync();
 })();
+
+/* ═══════════════ §AM: Windows 自绘 caption（decorations:false） ═══════════════
+   权限: minimize / toggle-maximize / is-maximized / close（capabilities 第四例起）。
+   mac 不绑——红绿灯仍是系统件。双击空白带最大化由注入脚本 internal-toggle-maximize 承接。 */
+(function initWinCaption() {
+  if (document.documentElement.getAttribute('data-os') !== 'win') return;
+  const ctrls = document.getElementById('tb-win-ctrls');
+  if (ctrls) ctrls.setAttribute('aria-hidden', 'false');
+  const appWin = window.__TAURI__?.window?.getCurrentWindow?.();
+  const minBtn = document.getElementById('win-min');
+  const maxBtn = document.getElementById('win-max');
+  const closeBtn = document.getElementById('win-close');
+  const syncMax = () => {
+    if (!appWin?.isMaximized) return;
+    appWin.isMaximized().then(m => {
+      document.documentElement.classList.toggle('is-maximized', !!m);
+    }).catch(() => {});
+  };
+  minBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    appWin?.minimize?.().catch(() => {});
+  });
+  maxBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    appWin?.toggleMaximize?.().then(syncMax).catch(() => {});
+  });
+  closeBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    appWin?.close?.().catch(() => {});
+  });
+  window.addEventListener('resize', syncMax);
+  syncMax();
+})();

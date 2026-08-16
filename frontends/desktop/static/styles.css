@@ -560,6 +560,31 @@ html[data-appearance="dark"] .sidebar{ border-right-color:var(--line); }
 /* §AE: macOS 全屏红绿灯自隐, 让位收回→开关贴左（12px 与侧栏内容列同缘）。
    刻意不加过渡: 退全屏红绿灯即时复现, 开关需同帧让位避免重叠停留 */
 body.is-fullscreen{ --lights-w:12px; }
+/* §AM: Windows 无红绿灯——让位收回与侧栏内容列同缘; 自绘 caption 占右端 */
+html[data-os="win"]{ --lights-w:12px; --win-ctrls-w:138px; }
+html[data-os="win"] .tb-win-ctrls{ display:flex; }
+html[data-os="win"] .tb-main{ padding-right:calc(var(--win-ctrls-w) + 8px); }  /* 标题居中时避开 caption 视觉偏左 */
+.tb-win-ctrls{
+  display:none; position:absolute; top:0; right:0; bottom:0;
+  flex:0 0 auto; align-items:stretch; z-index:2;
+  -webkit-app-region:no-drag;  /* 与 drag-region 互斥, 钮可点 */
+}
+.tb-win-btn{
+  width:46px; height:100%; margin:0; padding:0; border:0; border-radius:0;
+  background:transparent; color:var(--txt-2); cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center;
+  transition:background var(--dur-1), color var(--dur-1);
+}
+.tb-win-btn svg{ width:10px; height:10px; display:block; }
+.tb-win-btn:hover{ background:var(--surface3); color:var(--txt); }
+.tb-win-btn.tb-win-close:hover{ background:var(--danger); color:#fff; }
+html[data-os="win"].is-maximized .win-ico-max{ display:none; }
+html[data-os="win"] .win-ico-restore{ display:none; }
+html[data-os="win"].is-maximized .win-ico-restore{ display:block; }
+/* 折叠态标题整窗居中时也避开右端 caption */
+html[data-os="win"] #app:has(.body.sb-collapsed) .tb-title{
+  max-width:min(calc(60vw - var(--win-ctrls-w)), 720px);
+}
 /* 折叠态标题脱离 tb-main 流, 对整窗居中（展开态仍居中于内容区段） */
 #app:has(.body.sb-collapsed) .tb-title{
   position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
