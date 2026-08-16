@@ -120,7 +120,9 @@ if __name__ == '__main__':
     @app.middleware('http')
     async def guard(req: Request, call_next):
         if req.scope['server'][1] == PORT: return Response(status_code=404)   # bus port speaks WebSocket only
-        public = getattr(app.state, 'p2p_pair_open', False) and req.url.path in ('/pair', '/pair/status')
+        # /pair* 公开：出码页、状态、二维码脚本（手机扫码配对；token 不进二维码）
+        path = req.url.path
+        public = getattr(app.state, 'p2p_pair_open', False) and (path == '/pair' or path.startswith('/pair/'))
         if public: return await call_next(req)
         t = req.query_params.get('t') or req.cookies.get('ga_hub_t') or ''    # web port: token or nothing
         if not hmac.compare_digest(t, TOKEN): return Response(status_code=403)

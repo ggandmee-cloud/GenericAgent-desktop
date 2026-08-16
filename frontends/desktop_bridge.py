@@ -2215,6 +2215,71 @@ async def bridge_exit_handler(request):
     return json_ok({"ok": True})
 
 
+def _hub_web_base() -> tuple[str, int]:
+    """Return (base_url, web_port) for the local GA hub panel."""
+    if str(APP_DIR) not in sys.path:
+        sys.path.insert(0, str(APP_DIR))
+    import hub as ga_hub  # noqa: WPS433
+    try:
+        ga_hub.serve()
+    except Exception:
+        pass
+    port = int(getattr(ga_hub, "WEB_PORT", 19737) or 19737)
+    return f"http://127.0.0.1:{port}", port
+
+
+async def pclink_pair_info_handler(request):
+    """Kick hub pairing + return URLs for the desktop Settings modal (no token in QR)."""
+    try:
+        base, port = _hub_web_base()
+    except Exception as e:
+        return json_ok({"ok": False, "error": f"hub unavailable: {e}"})
+    pair_url = f"{base}/pair"
+    status_url = f"{base}/pair/status"
+    # Touch /pair so create_code starts even if the user never opens the browser page.
+    try:
+        import aiohttp
+        timeout = aiohttp.ClientTimeout(total=3)
+        async with aiohttp.ClientSession(timeout=timeout) as sess:
+            async with sess.get(pair_url) as r:
+                await r.read()
+    except Exception as e:
+        return json_ok({
+            "ok": False,
+            "error": f"hub pair not reachable on :{port} ({e})",
+            "hubWebBase": base,
+            "pairUrl": pair_url,
+            "statusUrl": status_url,
+        })
+    return json_ok({
+        "ok": True,
+        "hubWebBase": base,
+        "pairUrl": pair_url,
+        "statusUrl": status_url,
+    })
+
+
+async def pclink_pair_status_handler(request):
+    """Proxy hub /pair/status so the desktop UI stays same-origin on the bridge."""
+    try:
+        base, _port = _hub_web_base()
+    except Exception as e:
+        return json_ok({"ok": False, "status": "error", "error": str(e)})
+    url = f"{base}/pair/status"
+    try:
+        import aiohttp
+        timeout = aiohttp.ClientTimeout(total=3)
+        async with aiohttp.ClientSession(timeout=timeout) as sess:
+            async with sess.get(url) as r:
+                data = await r.json(content_type=None)
+        if isinstance(data, dict):
+            data.setdefault("ok", True)
+            return json_ok(data)
+        return json_ok({"ok": False, "status": "error", "error": "bad status payload"})
+    except Exception as e:
+        return json_ok({"ok": False, "status": "error", "error": str(e)})
+
+
 async def token_stats_handler(request):
     try:
         sys.path.insert(0, str(APP_DIR)) if str(APP_DIR) not in sys.path else None
@@ -2342,6 +2407,8 @@ def create_app():
     app.router.add_post("/subscription-portal", subscription_portal_handler)
     app.router.add_get("/ota/status", ota_status_handler)
     app.router.add_post("/ota/apply", ota_apply_handler)
+    app.router.add_get("/pclink/pair-info", pclink_pair_info_handler)
+    app.router.add_get("/pclink/pair-status", pclink_pair_status_handler)
     app.router.add_post("/services/start", service_start_handler)
     app.router.add_post("/services/stop", service_stop_handler)
     app.router.add_get("/services/logs", service_logs_handler)

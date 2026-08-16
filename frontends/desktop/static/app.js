@@ -658,6 +658,7 @@ function gaCloseModal(m) {
     m.classList.remove('closing');
     m.hidden = true;
     m.querySelectorAll('.field-limit-hint').forEach(h => h.style.display = 'none');
+    if (m.id === 'pclink-modal' && typeof stopPcLinkPoll === 'function') stopPcLinkPoll();
   };
   card.addEventListener('animationend', finish, { once: true });
   m._gaCloseTimer = setTimeout(finish, 150);
@@ -850,44 +851,110 @@ bindClick('ga-source-clear-btn', async (e) => {
   }
 });
 refreshGaSource();
-/* OTA：设置里「检查更新」。第一次点检查 GitHub Release，发现新版本后再点一次下载覆盖运行时（保护 mykey/temp/memory），重启生效。 */
+/* OTA：设置「检查更新」+ §AN 启动自动检查。
+   手动：检查 → 再点一次 apply。自动：有更新则 required 弹窗「立即更新」，装完再弹「立即重启」。
+   覆盖运行时（保护 mykey/temp/memory），不含桌面壳；UI 由 bridge :14168 提供，reload 即吃新静态。 */
 const otaDescEl = document.getElementById('check-update-desc');
 let otaState = 'idle'; // idle | found | applying | done
+let otaAutoPrompted = false;
+
+function otaSyncDesc(text) {
+  if (otaDescEl) otaDescEl.textContent = text;
+}
+
+async function otaApplyUpdate() {
+  otaState = 'applying';
+  otaSyncDesc(t('sys.otaApplying'));
+  showChanToast(t('sys.otaApplying'), '', 'ok');
+  const r = await bridgeFetch('/ota/apply', { method: 'POST' });
+  if (r.upToDate) {
+    otaState = 'idle';
+    otaSyncDesc(`${t('sys.otaLatest')} (v${r.current})`);
+    showChanToast(t('sys.otaLatest'), `v${r.current}`, 'ok');
+    return r;
+  }
+  otaState = 'done';
+  otaSyncDesc(`${t('sys.otaDone')} (v${r.current})`);
+  showChanToast(t('sys.otaDone'), `v${r.previous || ''} → v${r.current}`, 'ok');
+  return r;
+}
+
+async function otaPromptRequiredUpdate(s) {
+  otaState = 'found';
+  otaSyncDesc(`${t('sys.otaFound')} (v${s.current} → v${s.latest})`);
+  const go = await showConfirmDialog({
+    title: t('sys.otaUpdateTitle'),
+    message: t('sys.otaUpdateMsg', { current: s.current, latest: s.latest }),
+    okText: t('sys.otaUpdateNow'),
+    required: true,
+  });
+  if (!go) return;
+  try {
+    const r = await otaApplyUpdate();
+    if (r?.upToDate || otaState !== 'done') return;
+    const restart = await showConfirmDialog({
+      title: t('sys.otaDone'),
+      message: t('sys.otaRestartMsg', {
+        previous: r.previous || s.current,
+        current: r.current || s.latest,
+      }),
+      okText: t('sys.otaRestartNow'),
+      required: true,
+    });
+    if (restart) location.reload();
+  } catch (err) {
+    otaState = 'found';
+    otaSyncDesc(t('set.checkUpdateTip'));
+    showChanToast(t('err.ota'), err.message || String(err), 'err');
+  }
+}
+
+async function otaAutoCheckOnLaunch() {
+  if (otaAutoPrompted || otaState === 'applying' || otaState === 'done') return;
+  try {
+    const s = await bridgeFetch('/ota/status');
+    if (!s?.updateAvailable) {
+      otaSyncDesc(`${t('sys.otaLatest')} (v${s?.current || '?'})`);
+      return;
+    }
+    otaAutoPrompted = true;
+    await otaPromptRequiredUpdate(s);
+  } catch (err) {
+    console.warn('[ota] auto-check skipped', err);
+  }
+}
+
 bindClick('check-update-btn', async (e) => {
   e.stopPropagation();
   if (otaState === 'applying') return;
   if (otaState === 'done') { showChanToast(t('sys.otaDone'), '', 'ok'); return; }
   try {
     if (otaState === 'found') {
-      otaState = 'applying';
-      if (otaDescEl) otaDescEl.textContent = t('sys.otaApplying');
-      showChanToast(t('sys.otaApplying'), '', 'ok');
-      const r = await bridgeFetch('/ota/apply', { method: 'POST' });
-      if (r.upToDate) {
-        otaState = 'idle';
-        if (otaDescEl) otaDescEl.textContent = `${t('sys.otaLatest')} (v${r.current})`;
-        showChanToast(t('sys.otaLatest'), `v${r.current}`, 'ok');
-        return;
-      }
-      otaState = 'done';
-      if (otaDescEl) otaDescEl.textContent = `${t('sys.otaDone')} (v${r.current})`;
-      showChanToast(t('sys.otaDone'), `v${r.previous || ''} → v${r.current}`, 'ok');
+      const r = await otaApplyUpdate();
+      if (r?.upToDate || otaState !== 'done') return;
+      const restart = await showConfirmDialog({
+        title: t('sys.otaDone'),
+        message: t('sys.otaRestartMsg', { previous: r.previous || '', current: r.current || '' }),
+        okText: t('sys.otaRestartNow'),
+        required: true,
+      });
+      if (restart) location.reload();
       return;
     }
-    if (otaDescEl) otaDescEl.textContent = t('sys.otaChecking');
+    otaSyncDesc(t('sys.otaChecking'));
     const s = await bridgeFetch('/ota/status');
     if (s.updateAvailable) {
       otaState = 'found';
-      if (otaDescEl) otaDescEl.textContent = `${t('sys.otaFound')} (v${s.current} → v${s.latest})`;
+      otaSyncDesc(`${t('sys.otaFound')} (v${s.current} → v${s.latest})`);
       showChanToast(t('sys.otaFound'), `v${s.latest}`, 'ok');
     } else {
       otaState = 'idle';
-      if (otaDescEl) otaDescEl.textContent = `${t('sys.otaLatest')} (v${s.current})`;
+      otaSyncDesc(`${t('sys.otaLatest')} (v${s.current})`);
       showChanToast(t('sys.otaLatest'), `v${s.current}`, 'ok');
     }
   } catch (err) {
     otaState = 'idle';
-    if (otaDescEl) otaDescEl.textContent = t('set.checkUpdateTip');
+    otaSyncDesc(t('set.checkUpdateTip'));
     showChanToast(t('err.ota'), err.message || String(err), 'err');
   }
 });
@@ -913,6 +980,57 @@ function startGaTokenPortalFlow() {
   });
 }
 bindClick('ga-token-btn', (e) => { e.stopPropagation(); startGaTokenPortalFlow(); });
+
+/* 手机互联：设置内 modal 出示 hub 配对码 + QR（载荷 ga-pclink:v1:<9digits>） */
+let _pclinkPoll = null;
+let _pclinkPairUrl = '';
+function stopPcLinkPoll() {
+  if (_pclinkPoll) { clearInterval(_pclinkPoll); _pclinkPoll = null; }
+}
+function paintPcLinkStatus(s) {
+  const codeEl = document.getElementById('pclink-code');
+  const stEl = document.getElementById('pclink-state');
+  const canvas = document.getElementById('pclink-qr');
+  if (codeEl) codeEl.textContent = s?.code || '—';
+  if (stEl) {
+    let msg = s?.status || '';
+    if (s?.error) msg += (msg ? ' · ' : '') + s.error;
+    stEl.textContent = msg;
+  }
+  if (canvas && s?.qr_payload && window.QR?.renderCanvas) {
+    try { QR.renderCanvas(s.qr_payload, canvas, 220); } catch (_) {}
+  }
+  if (s?.status === 'connected') {
+    stopPcLinkPoll();
+    showChanToast(t('sys.pcLinkConnected'), '', 'ok');
+  }
+}
+async function openPcLinkModal() {
+  stopPcLinkPoll();
+  const info = await bridgeFetch('/pclink/pair-info').catch(e => ({ ok: false, error: e.message || String(e) }));
+  if (!info?.ok) {
+    showChanToast(t('err.pcLink'), info?.error || '', 'err');
+    return;
+  }
+  _pclinkPairUrl = info.pairUrl || '';
+  openModal('pclink-modal');
+  paintPcLinkStatus({ status: 'starting…', code: null });
+  const tick = async () => {
+    const s = await bridgeFetch('/pclink/pair-status').catch(e => ({ status: 'error', error: e.message || String(e) }));
+    paintPcLinkStatus(s || {});
+  };
+  await tick();
+  _pclinkPoll = setInterval(tick, 1000);
+}
+bindClick('pclink-btn', (e) => { e.stopPropagation(); openPcLinkModal(); });
+bindClick('pclink-open-browser', (e) => {
+  e.stopPropagation();
+  if (!_pclinkPairUrl) return;
+  bridgeFetch('/open-url', { method: 'POST', body: { url: _pclinkPairUrl } }).catch(() => {});
+});
+document.getElementById('pclink-modal')?.addEventListener('click', (e) => {
+  if (e.target.closest('[data-close]')) stopPcLinkPoll();
+});
 // 接入指引：复制获取 API Key 的链接
 bindClick('model-guide-copy', (e) => {
   e.preventDefault(); e.stopPropagation();
@@ -928,16 +1046,26 @@ document.querySelectorAll('.modal').forEach(m =>
   }));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModals(); });
 
-function showConfirmDialog({ title, message, okText, okKind = 'primary', cancelText } = {}) {
+function showConfirmDialog({ title, message, okText, okKind = 'primary', cancelText, required = false } = {}) {
   const modal = document.getElementById('confirm-modal');
   if (!modal) return Promise.resolve(false);
   const titleEl = document.getElementById('confirm-title');
   const msgEl = document.getElementById('confirm-message');
   const okBtn = document.getElementById('confirm-ok');
   const cancelBtn = document.getElementById('confirm-cancel');
+  const xBtn = modal.querySelector('.modal-x');
+  const backdrop = modal.querySelector('.modal-backdrop');
   if (titleEl) titleEl.textContent = title || t('common.confirm');
   if (msgEl) msgEl.textContent = message || '';
-  if (cancelBtn) cancelBtn.textContent = cancelText || t('common.cancel');
+  if (cancelBtn) {
+    cancelBtn.hidden = !!required;
+    cancelBtn.textContent = cancelText || t('common.cancel');
+  }
+  if (xBtn) xBtn.hidden = !!required;
+  if (backdrop) {
+    if (required) backdrop.removeAttribute('data-close');
+    else backdrop.setAttribute('data-close', '');
+  }
   if (okBtn) {
     okBtn.textContent = okText || t('common.confirm');
     okBtn.classList.toggle('danger', okKind === 'danger');
@@ -950,14 +1078,25 @@ function showConfirmDialog({ title, message, okText, okKind = 'primary', cancelT
     const finish = (yes) => {
       if (done) return;
       done = true;
+      if (cancelBtn) cancelBtn.hidden = false;
+      if (xBtn) xBtn.hidden = false;
+      if (backdrop && !backdrop.hasAttribute('data-close')) backdrop.setAttribute('data-close', '');
       gaCloseModal(modal);  // §Y1.2 退场(业务时序不变)
       cleanup();
       resolve(yes);
     };
     const onOk = (e) => { e.preventDefault(); e.stopPropagation(); finish(true); };
     const onCancel = (e) => { e.preventDefault(); e.stopPropagation(); finish(false); };
-    const onClose = (e) => { if (e.target.closest('[data-close]')) finish(false); };
-    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); } };
+    const onClose = (e) => {
+      if (required) return;
+      if (e.target.closest('[data-close]')) finish(false);
+    };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!required) finish(false);
+    };
     const cleanup = () => {
       okBtn?.removeEventListener('click', onOk);
       cancelBtn?.removeEventListener('click', onCancel);
@@ -5328,6 +5467,8 @@ window.ga.onBridgeReady(async () => {
   } else if (sess) planPoll(sess);
   delete document.documentElement.dataset.bootHasSessions;
   if (sess) refreshEmptyState(sess);
+  /* §AN: 桥就绪后自动查 OTA；有更新则 required 弹窗（不挡首屏其它就绪路径） */
+  otaAutoCheckOnLaunch();
 });
 setTimeout(() => { delete document.documentElement.dataset.bootHasSessions; }, 3000);
 window.ga.onBridgeNotification((msg) => {

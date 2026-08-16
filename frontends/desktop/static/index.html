@@ -526,6 +526,27 @@
     </div>
   </div>
 
+  <div class="modal" id="pclink-modal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pclink-title">
+      <div class="modal-head">
+        <div class="modal-title" id="pclink-title" data-i18n="modal.pcLink"></div>
+        <button class="modal-x" data-close data-i18n-title="common.close" title="">
+          <span data-ga-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal-body" style="text-align:center;padding:20px 24px 28px">
+        <p class="sa-d" style="margin:0 0 16px" data-i18n="modal.pcLinkHint"></p>
+        <canvas id="pclink-qr" width="220" height="220" style="width:220px;height:220px;border-radius:12px;background:#fff;margin:0 auto 12px;display:block"></canvas>
+        <pre id="pclink-code" style="font:700 1.5rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.16em;margin:0 0 8px;user-select:all">—</pre>
+        <p id="pclink-state" class="sa-d" style="margin:0;min-height:1.4em"></p>
+        <div style="margin-top:16px">
+          <button type="button" class="set-btn ghost" id="pclink-open-browser" data-i18n="modal.pcLinkOpenPage"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 自定义预设 弹窗 -->
   <div class="modal" id="custom-preset-modal" hidden>
     <div class="modal-backdrop" data-close></div>
@@ -669,6 +690,13 @@
               <span class="sa-d" data-i18n="set.gaTokenTip"></span>
             </span>
           </button>
+          <button class="set-btn set-act set-btn-follow" id="pclink-btn" type="button">
+            <span data-ga-icon="broadcast"></span>
+            <span class="sa-t">
+              <span data-i18n="set.pcLink"></span>
+              <span class="sa-d" data-i18n="set.pcLinkTip"></span>
+            </span>
+          </button>
           <button class="set-btn set-act set-btn-follow" id="import-mykey-btn" type="button">
             <span data-ga-icon="fileText"></span>
             <span class="sa-t">
@@ -736,12 +764,13 @@
 <div id="toast-root" class="toast-root" aria-live="polite"></div>
 
 <script src="vendor/marked.min.js"></script>
+<script src="vendor/qr-matrix.js"></script>
 <!-- KaTeX JS -->
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
 <!-- highlight.js -->
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js" crossorigin="anonymous"></script>
 <script src="phosphor-icons.js?v=4"></script>
-<script src="i18n.js?v=7"></script>
-<script src="app.js?v=234"></script>
+<script src="i18n.js?v=9"></script>
+<script src="app.js?v=236"></script>
 </body>
 </html>

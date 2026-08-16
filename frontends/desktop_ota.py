@@ -17,6 +17,8 @@ import urllib.request
 from pathlib import Path
 
 REPO = os.environ.get("GA_OTA_REPO", "ggandmee-cloud/GenericAgent-desktop")
+# Prefer plan.khrey.com feed (hosted packages); fall back to GitHub Releases.
+FEED_URL = os.environ.get("GA_OTA_FEED", "https://plan.khrey.com/desktop/latest.json")
 ASSET = "GenericAgent-runtime.tar.gz"
 TAG_PREFIX = "desktop-portable-"
 # 用户数据/本机状态，覆盖更新永不写入
@@ -48,20 +50,49 @@ def _release_payload(data: dict) -> dict:
         "assetUrl": asset.get("browser_download_url") or "",
         "assetSize": int(asset.get("size") or 0),
         "shaUrl": sha.get("browser_download_url") or "",
+        "sha256": "",
+    }
+
+
+def _feed_payload(data: dict) -> dict:
+    """Map plan.khrey.com /desktop/latest.json → internal release shape."""
+    rt = data.get("runtime") or {}
+    tag = str(data.get("tag") or "")
+    version = str(data.get("version") or "")
+    if not version and tag.startswith(TAG_PREFIX):
+        version = tag[len(TAG_PREFIX):]
+    return {
+        "tag": tag or (TAG_PREFIX + version if version else ""),
+        "version": version,
+        "publishedAt": str(data.get("publishedAt") or ""),
+        "notes": str(data.get("notes") or "")[:2000],
+        "assetUrl": str(rt.get("url") or ""),
+        "assetSize": int(rt.get("size") or 0),
+        "shaUrl": "",
+        "sha256": str(rt.get("sha256") or ""),
     }
 
 
 def _api_json(url: str):
-    with urllib.request.urlopen(urllib.request.Request(url, headers=_UA), timeout=20) as r:
+    headers = dict(_UA)
+    if "github.com" not in url:
+        headers = {"User-Agent": _UA["User-Agent"], "Accept": "application/json"}
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
 def fetch_latest(repo: str = "") -> dict:
-    """Pick the newest desktop-portable-* release that ships the runtime asset.
+    """Prefer plan.khrey.com desktop feed; else GitHub Releases."""
+    feed = (FEED_URL or "").strip()
+    if feed:
+        try:
+            data = _api_json(feed)
+            out = _feed_payload(data if isinstance(data, dict) else {})
+            if out.get("assetUrl") and out.get("version"):
+                return out
+        except Exception:
+            pass
 
-    Do NOT trust GitHub's /releases list order (it is not reliably chronological).
-    Prefer /releases/latest when it has the asset; otherwise choose by published_at.
-    """
     repo = repo or REPO
     candidates = []
 
@@ -109,12 +140,16 @@ def _download(url: str, dst: Path) -> None:
         shutil.copyfileobj(r, f)
 
 
-def _verify_sha(tar_path: Path, sha_url: str) -> None:
-    req = urllib.request.Request(sha_url, headers={"User-Agent": _UA["User-Agent"]})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        want = r.read().decode("utf-8").split()[0].strip().lower()
+def _verify_sha(tar_path: Path, sha_url: str = "", want: str = "") -> None:
+    if not want and sha_url:
+        req = urllib.request.Request(sha_url, headers={"User-Agent": _UA["User-Agent"]})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            want = r.read().decode("utf-8").split()[0].strip().lower()
+    want = (want or "").strip().lower()
+    if not want:
+        return
     got = hashlib.sha256(tar_path.read_bytes()).hexdigest()
-    if want and got != want:
+    if got != want:
         raise ValueError(f"sha256 mismatch: got {got[:12]}…, want {want[:12]}…")
 
 
@@ -184,8 +219,7 @@ def apply(root: Path) -> dict:
     tmp = Path(name)
     try:
         _download(latest["assetUrl"], tmp)
-        if latest["shaUrl"]:
-            _verify_sha(tmp, latest["shaUrl"])
+        _verify_sha(tmp, sha_url=latest.get("shaUrl") or "", want=latest.get("sha256") or "")
         res = apply_tarball(tmp, root, latest["version"])
     finally:
         tmp.unlink(missing_ok=True)
