@@ -738,3 +738,37 @@ jobs:
             sleep 3
           done
           gh release upload "$TAG_NAME" artifacts/macos/out/* --clobber
+
+  # ----------------------------------------------------------------------------
+  # Mirror GitHub Release → plan.khrey.com/desktop/
+  # Needs repo secrets: PLAN_KHREY_SSH_HOST / USER / KEY
+  # Optional: PLAN_KHREY_SSH_PORT, PLAN_KHREY_DESKTOP_DIR, PLAN_KHREY_PUBLIC_BASE
+  publish-plan-khrey:
+    name: Mirror to plan.khrey.com
+    if: ${{ startsWith(github.ref, 'refs/tags/desktop-portable-') }}
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Mirror release assets to plan.khrey.com
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLAN_KHREY_SSH_HOST: ${{ secrets.PLAN_KHREY_SSH_HOST }}
+          PLAN_KHREY_SSH_USER: ${{ secrets.PLAN_KHREY_SSH_USER }}
+          PLAN_KHREY_SSH_KEY: ${{ secrets.PLAN_KHREY_SSH_KEY }}
+          PLAN_KHREY_SSH_PORT: ${{ secrets.PLAN_KHREY_SSH_PORT }}
+          PLAN_KHREY_DESKTOP_DIR: ${{ secrets.PLAN_KHREY_DESKTOP_DIR }}
+          PLAN_KHREY_PUBLIC_BASE: ${{ secrets.PLAN_KHREY_PUBLIC_BASE }}
+          PLAN_KHREY_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          : "${PLAN_KHREY_SSH_HOST:?set secret PLAN_KHREY_SSH_HOST}"
+          : "${PLAN_KHREY_SSH_USER:?set secret PLAN_KHREY_SSH_USER}"
+          : "${PLAN_KHREY_SSH_KEY:?set secret PLAN_KHREY_SSH_KEY}"
+          # Empty optional secrets become "" — script defaults apply.
+          export PLAN_KHREY_SSH_PORT="${PLAN_KHREY_SSH_PORT:-22}"
+          export PLAN_KHREY_DESKTOP_DIR="${PLAN_KHREY_DESKTOP_DIR:-/opt/tokenplan/data/desktop}"
+          export PLAN_KHREY_PUBLIC_BASE="${PLAN_KHREY_PUBLIC_BASE:-https://plan.khrey.com/desktop/files}"
+          bash frontends/desktop/packaging/scripts/sync_plan_khrey_desktop.sh "${{ github.ref_name }}"

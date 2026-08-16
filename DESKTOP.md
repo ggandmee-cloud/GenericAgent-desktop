@@ -31,13 +31,15 @@ CI：推送标签 `desktop-portable-*` 会打三端并挂到同一个 Release（
 
 ## OTA（应用内更新）
 
-装好的应用在 **设置 → 检查更新**：第一次点检查最新 Release，发现新版本再点一次即下载 `GenericAgent-runtime.tar.gz` 覆盖运行时（Python 源码 + 前端静态资源），重启应用生效。桌面壳（Tauri 可执行文件）不通过 OTA 更新。
+装好的应用在 **设置 → 检查更新**：第一次点检查最新版本，发现新版本再点一次即下载 `GenericAgent-runtime.tar.gz` 覆盖运行时（Python 源码 + 前端静态资源），重启应用生效。桌面壳（Tauri 可执行文件）不通过 OTA 更新。
 
-- 版本来源：仓库根 `VERSION` 文件 vs Release 标签（`desktop-portable-` 后缀部分），字符串不等且有 runtime 资产即提示更新
+- 默认更新源：[plan.khrey.com/desktop/latest.json](https://plan.khrey.com/desktop/latest.json)（安装包页 [plan.khrey.com/desktop/](https://plan.khrey.com/desktop/)）
+- 版本来源：仓库根 `VERSION` vs manifest `version`；有 runtime 资产且版本不同即提示更新
 - 覆盖时保护用户数据：`mykey.py`、`temp/`、`memory/`、`tasks/`、`.venv/` 等永不写入（见 `frontends/desktop_ota.py` 的 `PROTECTED`）
-- 有 `.sha256` 资产时下载后校验
-- 换更新源：环境变量 `GA_OTA_REPO=owner/name`
-- 发新版：改 `VERSION`（与标签后缀一致），推标签 `desktop-portable-<版本>`，CI 会自动把 runtime 包挂进 Release
+- manifest 内联 `sha256`（或 GitHub 旁路 `.sha256` 资产）下载后校验
+- 换更新源：`GA_OTA_FEED=<url>`；回落 GitHub：`GA_OTA_REPO=owner/name`
+- 发新版：改 `VERSION`，推标签 `desktop-portable-<版本>`，CI 打三端并挂 Release，随后 **自动镜像**到 [plan.khrey.com/desktop/](https://plan.khrey.com/desktop/)（job `publish-plan-khrey`，脚本 `frontends/desktop/packaging/scripts/sync_plan_khrey_desktop.sh`）
+- 镜像所需仓库 Secrets：`PLAN_KHREY_SSH_HOST`、`PLAN_KHREY_SSH_USER`、`PLAN_KHREY_SSH_KEY`（可选 `PLAN_KHREY_DESKTOP_DIR` / `PLAN_KHREY_PUBLIC_BASE` / `PLAN_KHREY_SSH_PORT`）
 
 ## 从源码跑
 
