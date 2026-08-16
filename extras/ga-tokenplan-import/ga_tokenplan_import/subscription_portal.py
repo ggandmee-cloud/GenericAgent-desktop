@@ -11,8 +11,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
-INVITE_CODE = "ljq"
-PORTAL_URL = "https://tokenplan.gaagent.ai"
+INVITE_CODE = os.environ.get("GA_TOKENPLAN_INVITE", "ljq")
+PORTAL_URL = os.environ.get("GA_TOKENPLAN_URL", "https://plan.khrey.com/").rstrip("/") + "/"
 HOST, PORT = "127.0.0.1", 34134
 BEGIN, END = "########### <TOKENPLAN>", "########### </TOKENPLAN>"
 _RE = re.compile(r"###########\s*<TOKENPLAN>\s*\n.*?###########\s*</TOKENPLAN>\s*\n?", re.S)

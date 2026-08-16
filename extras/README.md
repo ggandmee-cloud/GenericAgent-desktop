@@ -1,9 +1,9 @@
 # extras
 
-本仓库跟踪、但默认不启用的可选件。
+随仓带、默认启用的可选件。
 
 | 目录 | 作用 | 别人怎么拿 |
 |------|------|------------|
-| [`ga-tokenplan-import/`](ga-tokenplan-import/) | TokenPlan 本机导入 key（34134） | `python3 extras/ga-tokenplan-import/install.py install --copy` |
+| [`ga-tokenplan-import/`](ga-tokenplan-import/) | TokenPlan 本机导入 key（门户 [plan.khrey.com](https://plan.khrey.com/)，回调 34134） | clone 即可用；`plugins/subscription_portal.py` 已入库 |
 
-装上的插件落在 `plugins/subscription_portal.py`，该路径 gitignore，不会回写成「核心必带」。
+关掉：删 `plugins/subscription_portal.py` 或 `python3 extras/ga-tokenplan-import/install.py uninstall`。

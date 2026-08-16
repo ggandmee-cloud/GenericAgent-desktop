@@ -152,5 +152,4 @@ frontends/conductor_im_plugins/*
 # 本地 bug / 局限报告草稿（交给维护者参考，不进仓库）
 /BUG_*.md
 
-# 可选包启用后的落点（源在 extras/ga-tokenplan-import，不入库）
-plugins/subscription_portal.py
+# TokenPlan 导入已开箱即用：plugins/subscription_portal.py 入库（薄加载 extras/）
