@@ -9,6 +9,7 @@ venv/
 env/
 build/
 dist/
+artifacts/
 *.egg-info/
 
 .streamlit/
