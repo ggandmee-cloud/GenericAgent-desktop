@@ -2262,6 +2262,33 @@ async def post_token_history_handler(request):
     return json_ok({"ok": True})
 
 
+async def ota_status_handler(request):
+    try:
+        import desktop_ota
+    except Exception as e:
+        return json_ok({"ok": False, "error": f"ota module missing: {e}"}, status=500)
+    cur = desktop_ota.current_version(Path(manager.ga_root))
+    try:
+        out = await asyncio.to_thread(desktop_ota.check, Path(manager.ga_root))
+        return json_ok(out)
+    except Exception as e:
+        return json_ok({"ok": False, "current": cur, "error": str(e)}, status=502)
+
+
+async def ota_apply_handler(request):
+    if not _is_local_peer(request.remote or ""):
+        return json_ok({"ok": False, "error": "forbidden"}, status=403)
+    try:
+        import desktop_ota
+    except Exception as e:
+        return json_ok({"ok": False, "error": f"ota module missing: {e}"}, status=500)
+    try:
+        out = await asyncio.to_thread(desktop_ota.apply, Path(manager.ga_root))
+        return json_ok(out)
+    except Exception as e:
+        return json_ok({"ok": False, "error": str(e)}, status=500)
+
+
 async def subscription_portal_handler(request):
     manager.ensure_ga_import_path()
     try:
@@ -2313,6 +2340,8 @@ def create_app():
     app.router.add_post("/token-history", post_token_history_handler)
     app.router.add_get("/subscription-portal", subscription_portal_handler)
     app.router.add_post("/subscription-portal", subscription_portal_handler)
+    app.router.add_get("/ota/status", ota_status_handler)
+    app.router.add_post("/ota/apply", ota_apply_handler)
     app.router.add_post("/services/start", service_start_handler)
     app.router.add_post("/services/stop", service_stop_handler)
     app.router.add_get("/services/logs", service_logs_handler)

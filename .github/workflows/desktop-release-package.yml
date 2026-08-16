@@ -216,6 +216,8 @@ jobs:
           本构建开箱即用 TokenPlan：设置里 GA Token 打开 https://plan.khrey.com/ 。
           No separate Python install, no internet for dependencies, no source checkout required; the bundled runtime is prepared on first launch.
           TokenPlan import is enabled: GA Token in settings opens https://plan.khrey.com/ .
+          设置里「检查更新」可 OTA 更新运行时到最新 Release（`GenericAgent-runtime.tar.gz`，无需重装）。
+          In-app "Check for updates" OTA-updates the runtime from the latest release (no reinstall needed).
 
           ## 安装方法 / Installation
           - Windows: 下载 `GenericAgent-Desktop-Windows-Portable.zip`，解压后双击 `GenericAgent.exe` 启动。卸载时先退出应用，再双击包内 `uninstall.bat`，最后删除整个解压目录。
@@ -401,6 +403,11 @@ jobs:
           tar -C artifacts/linux -czf artifacts/linux/out/GenericAgent-Desktop-Linux-Portable.tar.gz GenericAgent-Desktop-Linux-Portable
           ( cd artifacts/linux/out && sha256sum GenericAgent-Desktop-Linux-Portable.tar.gz > SHA256SUMS-linux.txt )
 
+          # OTA runtime tarball: platform-neutral source tree, consumed by the in-app
+          # updater (/ota/apply). Built once here; all three platforms share it.
+          tar -C "$RUNTIME/app" -czf artifacts/linux/out/GenericAgent-runtime.tar.gz .
+          ( cd artifacts/linux/out && sha256sum GenericAgent-runtime.tar.gz > GenericAgent-runtime.tar.gz.sha256 )
+
           tar -tzf artifacts/linux/out/GenericAgent-Desktop-Linux-Portable.tar.gz > /tmp/pkglist.txt
           echo "Package contents (first 40 of $(wc -l < /tmp/pkglist.txt) entries):"
           head -40 /tmp/pkglist.txt
@@ -413,6 +420,8 @@ jobs:
           path: |
             artifacts/linux/out/GenericAgent-Desktop-Linux-Portable.tar.gz
             artifacts/linux/out/SHA256SUMS-linux.txt
+            artifacts/linux/out/GenericAgent-runtime.tar.gz
+            artifacts/linux/out/GenericAgent-runtime.tar.gz.sha256
           if-no-files-found: error
 
       - name: Publish into unified Release (tag push only)
@@ -431,6 +440,8 @@ jobs:
           本构建开箱即用 TokenPlan：设置里 GA Token 打开 https://plan.khrey.com/ 。
           No separate Python install, no internet for dependencies, no source checkout required; the bundled runtime is prepared on first launch.
           TokenPlan import is enabled: GA Token in settings opens https://plan.khrey.com/ .
+          设置里「检查更新」可 OTA 更新运行时到最新 Release（`GenericAgent-runtime.tar.gz`，无需重装）。
+          In-app "Check for updates" OTA-updates the runtime from the latest release (no reinstall needed).
 
           ## 安装方法 / Installation
           - Windows: 下载 `GenericAgent-Desktop-Windows-Portable.zip`，解压后双击 `GenericAgent.exe` 启动。卸载时先退出应用，再双击包内 `uninstall.bat`，最后删除整个解压目录。
@@ -697,6 +708,8 @@ jobs:
           本构建开箱即用 TokenPlan：设置里 GA Token 打开 https://plan.khrey.com/ 。
           No separate Python install, no internet for dependencies, no source checkout required; the bundled runtime is prepared on first launch.
           TokenPlan import is enabled: GA Token in settings opens https://plan.khrey.com/ .
+          设置里「检查更新」可 OTA 更新运行时到最新 Release（`GenericAgent-runtime.tar.gz`，无需重装）。
+          In-app "Check for updates" OTA-updates the runtime from the latest release (no reinstall needed).
 
           ## 安装方法 / Installation
           - Windows: 下载 `GenericAgent-Desktop-Windows-Portable.zip`，解压后双击 `GenericAgent.exe` 启动。卸载时先退出应用，再双击包内 `uninstall.bat`，最后删除整个解压目录。

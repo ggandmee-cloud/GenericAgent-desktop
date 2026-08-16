@@ -850,6 +850,47 @@ bindClick('ga-source-clear-btn', async (e) => {
   }
 });
 refreshGaSource();
+/* OTA：设置里「检查更新」。第一次点检查 GitHub Release，发现新版本后再点一次下载覆盖运行时（保护 mykey/temp/memory），重启生效。 */
+const otaDescEl = document.getElementById('check-update-desc');
+let otaState = 'idle'; // idle | found | applying | done
+bindClick('check-update-btn', async (e) => {
+  e.stopPropagation();
+  if (otaState === 'applying') return;
+  if (otaState === 'done') { showChanToast(t('sys.otaDone'), '', 'ok'); return; }
+  try {
+    if (otaState === 'found') {
+      otaState = 'applying';
+      if (otaDescEl) otaDescEl.textContent = t('sys.otaApplying');
+      showChanToast(t('sys.otaApplying'), '', 'ok');
+      const r = await bridgeFetch('/ota/apply', { method: 'POST' });
+      if (r.upToDate) {
+        otaState = 'idle';
+        if (otaDescEl) otaDescEl.textContent = `${t('sys.otaLatest')} (v${r.current})`;
+        showChanToast(t('sys.otaLatest'), `v${r.current}`, 'ok');
+        return;
+      }
+      otaState = 'done';
+      if (otaDescEl) otaDescEl.textContent = `${t('sys.otaDone')} (v${r.current})`;
+      showChanToast(t('sys.otaDone'), `v${r.previous || ''} → v${r.current}`, 'ok');
+      return;
+    }
+    if (otaDescEl) otaDescEl.textContent = t('sys.otaChecking');
+    const s = await bridgeFetch('/ota/status');
+    if (s.updateAvailable) {
+      otaState = 'found';
+      if (otaDescEl) otaDescEl.textContent = `${t('sys.otaFound')} (v${s.current} → v${s.latest})`;
+      showChanToast(t('sys.otaFound'), `v${s.latest}`, 'ok');
+    } else {
+      otaState = 'idle';
+      if (otaDescEl) otaDescEl.textContent = `${t('sys.otaLatest')} (v${s.current})`;
+      showChanToast(t('sys.otaLatest'), `v${s.current}`, 'ok');
+    }
+  } catch (err) {
+    otaState = 'idle';
+    if (otaDescEl) otaDescEl.textContent = t('set.checkUpdateTip');
+    showChanToast(t('err.ota'), err.message || String(err), 'err');
+  }
+});
 /* V1: 快速接入收纳进模型菜单（原侧栏推广卡删除）。
    gaTokenPortalAvailable 供 renderModelMenu 条件渲染 GA Token 行；流程与原实现一致。 */
 let gaTokenPortalAvailable = false;
