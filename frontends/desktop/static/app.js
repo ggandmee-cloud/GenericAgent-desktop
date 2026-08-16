@@ -891,11 +891,18 @@ bindClick('check-update-btn', async (e) => {
     showChanToast(t('err.ota'), err.message || String(err), 'err');
   }
 });
-/* V1: 快速接入收纳进模型菜单（原侧栏推广卡删除）。
-   gaTokenPortalAvailable 供 renderModelMenu 条件渲染 GA Token 行；流程与原实现一致。 */
+/* TokenPlan：设置「功能」+ 模型菜单都有入口；插件可用才显示。 */
 let gaTokenPortalAvailable = false;
-bridgeFetch('/subscription-portal').then(r => { gaTokenPortalAvailable = !!r?.available; }).catch(() => {});
+const gaTokenBtn = document.getElementById('ga-token-btn');
+function syncGaTokenEntry() {
+  if (gaTokenBtn) gaTokenBtn.hidden = !gaTokenPortalAvailable;
+}
+bridgeFetch('/subscription-portal').then(r => {
+  gaTokenPortalAvailable = !!r?.available;
+  syncGaTokenEntry();
+}).catch(() => { syncGaTokenEntry(); });
 function startGaTokenPortalFlow() {
+  showChanToast(t('sys.gaTokenOpen'), 'plan.khrey.com', 'ok');
   window.ga.getMykeyContent().then(r => {
     const base = r?.content || '', t0 = Date.now();
     bridgeFetch('/subscription-portal', { method: 'POST', body: {} });
@@ -905,6 +912,7 @@ function startGaTokenPortalFlow() {
     }, 3000);
   });
 }
+bindClick('ga-token-btn', (e) => { e.stopPropagation(); startGaTokenPortalFlow(); });
 // 接入指引：复制获取 API Key 的链接
 bindClick('model-guide-copy', (e) => {
   e.preventDefault(); e.stopPropagation();

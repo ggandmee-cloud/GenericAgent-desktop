@@ -125,6 +125,10 @@ def apply_tarball(tar_path: Path, root: Path, version: str) -> dict:
                 continue
             dst = root / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
+            # copy2 follows existing symlinks and would write through them into
+            # an external tree; replace the link with a real file instead.
+            if dst.is_symlink() or dst.exists():
+                dst.unlink()
             shutil.copy2(src, dst)
             updated += 1
     (root / "VERSION").write_text(version + "\n", encoding="utf-8")
