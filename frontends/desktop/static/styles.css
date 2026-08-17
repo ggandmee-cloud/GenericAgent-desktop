@@ -177,6 +177,8 @@ button, input, select, textarea{ font-family:inherit; }
 /* 添加模型是从「配置」里二级弹出，需盖在配置之上 */
 #add-model-modal{ z-index:600; }
 #confirm-modal{ z-index:700; }
+/* 手机互联从设置里弹出；Settings 在 DOM 更靠后，同级 z-index 会被盖住 */
+#pclink-modal{ z-index:720; }
 .modal-backdrop{ position:absolute; inset:0; background:var(--overlay); }
 .modal-card{
   position:relative; width:420px; max-width:92vw; max-height:86vh; overflow:hidden;

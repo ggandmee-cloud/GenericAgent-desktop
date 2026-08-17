@@ -852,17 +852,54 @@ bindClick('ga-source-clear-btn', async (e) => {
 });
 refreshGaSource();
 /* OTA：设置「检查更新」+ §AN 启动自动检查。
-   手动：检查 → 再点一次 apply。自动：有更新则 required 弹窗「立即更新」，装完再弹「立即重启」。
-   覆盖运行时（保护 mykey/temp/memory），不含桌面壳；UI 由 bridge :14168 提供，reload 即吃新静态。 */
+   两通道：壳（platforms.* + helper）优先；仅 runtime 新则走小包 + restart_runtime。 */
 const otaDescEl = document.getElementById('check-update-desc');
 let otaState = 'idle'; // idle | found | applying | done
 let otaAutoPrompted = false;
+let otaPending = null; // last /ota/status payload
 
 function otaSyncDesc(text) {
   if (otaDescEl) otaDescEl.textContent = text;
 }
 
-async function otaApplyUpdate() {
+function otaChannelLabel(s) {
+  if (s?.shellUpdateAvailable) return 'shell';
+  if (s?.runtimeUpdateAvailable || (s?.updateAvailable && !s?.shellBlocked)) return 'runtime';
+  return '';
+}
+
+function otaFoundText(s) {
+  if (s?.shellBlocked) return t('sys.otaShellBlocked');
+  if (s?.shellUnknown && !s?.runtimeUpdateAvailable) return t('sys.otaShellUnknown');
+  if (s?.shellUpdateAvailable) {
+    return `${t('sys.otaShellFound')} (shell v${s.shellCurrent} → v${s.shellLatest})`;
+  }
+  return `${t('sys.otaFound')} (v${s.current} → v${s.latest})`;
+}
+
+async function otaApplyShellUpdate() {
+  otaState = 'applying';
+  otaSyncDesc(t('sys.otaShellApplying'));
+  showChanToast(t('sys.otaShellApplying'), '', 'ok');
+  const r = await bridgeFetch('/ota/apply-shell', { method: 'POST' });
+  if (!r?.ok) throw new Error(r?.error || 'shell apply failed');
+  otaState = 'done';
+  otaSyncDesc(t('sys.otaShellExiting'));
+  showChanToast(t('sys.otaShellExiting'), `v${r.previous || ''} → v${r.version || ''}`, 'ok');
+  try {
+    if (window.__TAURI__?.core?.invoke) {
+      await window.ga.tauriInvoke('exit_for_shell_ota');
+      return r;
+    }
+  } catch (err) {
+    console.warn('[ota] exit_for_shell_ota failed', err);
+  }
+  // Fallback: bridge already exiting; user must quit the app manually.
+  showChanToast(t('sys.otaShellExiting'), t('sys.otaShellQuitHint'), 'ok');
+  return r;
+}
+
+async function otaApplyRuntimeUpdate() {
   otaState = 'applying';
   otaSyncDesc(t('sys.otaApplying'));
   showChanToast(t('sys.otaApplying'), '', 'ok');
@@ -876,9 +913,17 @@ async function otaApplyUpdate() {
   otaState = 'done';
   otaSyncDesc(`${t('sys.otaDone')} (v${r.current})`);
   showChanToast(t('sys.otaDone'), `v${r.previous || ''} → v${r.current}`, 'ok');
-  // OTA 只写磁盘；必须换掉旧 bridge/hub 进程，location.reload 不够。
   await otaRestartRuntime();
   return r;
+}
+
+async function otaApplyUpdate(s) {
+  const st = s || otaPending || {};
+  if (st.shellBlocked || (st.shellUnknown && !st.runtimeUpdateAvailable && !st.shellUpdateAvailable)) {
+    throw new Error(t('sys.otaShellManual'));
+  }
+  if (st.shellUpdateAvailable) return otaApplyShellUpdate();
+  return otaApplyRuntimeUpdate();
 }
 
 /** Kill stale hub + respawn bridge via Tauri (fallback: /ota/recycle + start_bridge). */
@@ -895,7 +940,6 @@ async function otaRestartRuntime() {
     console.warn('[ota] restart_runtime failed, fallback', err);
   }
   try { await bridgeFetch('/ota/recycle', { method: 'POST' }); } catch (_) {}
-  // bridge exiting — wait for port to free, then ask shell to spawn again
   for (let i = 0; i < 40; i++) {
     try {
       await bridgeFetch('/status');
@@ -914,17 +958,28 @@ async function otaRestartRuntime() {
 }
 
 async function otaPromptRequiredUpdate(s) {
+  otaPending = s;
   otaState = 'found';
-  otaSyncDesc(`${t('sys.otaFound')} (v${s.current} → v${s.latest})`);
+  otaSyncDesc(otaFoundText(s));
+  if (s.shellBlocked || (s.shellUnknown && !s.runtimeUpdateAvailable && !s.shellUpdateAvailable)) {
+    showChanToast(t('sys.otaShellManual'), s.shellBlocked || '', 'err');
+    otaState = 'idle';
+    return;
+  }
+  const current = s.shellUpdateAvailable ? s.shellCurrent : s.current;
+  const latest = s.shellUpdateAvailable ? s.shellLatest : s.latest;
+  const msg = s.shellUpdateAvailable
+    ? t('sys.otaShellUpdateMsg', { current, latest })
+    : t('sys.otaUpdateMsg', { current, latest });
   const go = await showConfirmDialog({
     title: t('sys.otaUpdateTitle'),
-    message: t('sys.otaUpdateMsg', { current: s.current, latest: s.latest }),
+    message: msg,
     okText: t('sys.otaUpdateNow'),
     required: true,
   });
   if (!go) return;
   try {
-    await otaApplyUpdate();
+    await otaApplyUpdate(s);
   } catch (err) {
     otaState = 'found';
     otaSyncDesc(t('set.checkUpdateTip'));
@@ -936,8 +991,10 @@ async function otaAutoCheckOnLaunch() {
   if (otaAutoPrompted || otaState === 'applying' || otaState === 'done') return;
   try {
     const s = await bridgeFetch('/ota/status');
+    otaPending = s;
     if (!s?.updateAvailable) {
-      otaSyncDesc(`${t('sys.otaLatest')} (v${s?.current || '?'})`);
+      const ver = s?.shellCurrent || s?.current || '?';
+      otaSyncDesc(`${t('sys.otaLatest')} (v${ver})`);
       return;
     }
     otaAutoPrompted = true;
@@ -954,7 +1011,7 @@ bindClick('check-update-btn', async (e) => {
   try {
     if (otaState === 'found') {
       try {
-        await otaApplyUpdate();
+        await otaApplyUpdate(otaPending);
       } catch (err) {
         otaState = 'found';
         otaSyncDesc(t('set.checkUpdateTip'));
@@ -964,14 +1021,21 @@ bindClick('check-update-btn', async (e) => {
     }
     otaSyncDesc(t('sys.otaChecking'));
     const s = await bridgeFetch('/ota/status');
+    otaPending = s;
+    if (s.shellBlocked && !s.runtimeUpdateAvailable) {
+      otaState = 'idle';
+      otaSyncDesc(t('sys.otaShellBlocked'));
+      showChanToast(t('sys.otaShellManual'), s.shellBlocked, 'err');
+      return;
+    }
     if (s.updateAvailable) {
       otaState = 'found';
-      otaSyncDesc(`${t('sys.otaFound')} (v${s.current} → v${s.latest})`);
-      showChanToast(t('sys.otaFound'), `v${s.latest}`, 'ok');
+      otaSyncDesc(otaFoundText(s));
+      showChanToast(t('sys.otaFound'), otaChannelLabel(s) === 'shell' ? `shell v${s.shellLatest}` : `v${s.latest}`, 'ok');
     } else {
       otaState = 'idle';
-      otaSyncDesc(`${t('sys.otaLatest')} (v${s.current})`);
-      showChanToast(t('sys.otaLatest'), `v${s.current}`, 'ok');
+      otaSyncDesc(`${t('sys.otaLatest')} (v${s.shellCurrent || s.current})`);
+      showChanToast(t('sys.otaLatest'), `v${s.shellCurrent || s.current}`, 'ok');
     }
   } catch (err) {
     otaState = 'idle';
@@ -1005,30 +1069,56 @@ bindClick('ga-token-btn', (e) => { e.stopPropagation(); startGaTokenPortalFlow()
 /* 手机互联：设置内 modal 出示 hub 配对码 + QR（载荷 ga-pclink:v1:<9digits>） */
 let _pclinkPoll = null;
 let _pclinkPairUrl = '';
+let _pclinkTickBusy = false;
+let _pclinkToasted = false;
+let _pclinkSawUnlinked = false;
+let _pclinkLinked = false;
 function stopPcLinkPoll() {
   if (_pclinkPoll) { clearInterval(_pclinkPoll); _pclinkPoll = null; }
+}
+function pcLinkStatusText(s) {
+  const st = String(s?.status || '');
+  const key = {
+    connected: 'sys.pcLinkConnected',
+    waiting: 'sys.pcLinkWaiting',
+    reconnecting: 'sys.pcLinkReconnecting',
+    idle: 'sys.pcLinkIdle',
+    error: 'err.pcLink',
+  }[st];
+  let msg = key ? t(key) : (st || '');
+  if (s?.error) msg += (msg ? ' · ' : '') + s.error;
+  return msg;
 }
 function paintPcLinkStatus(s) {
   const codeEl = document.getElementById('pclink-code');
   const stEl = document.getElementById('pclink-state');
   const canvas = document.getElementById('pclink-qr');
-  if (codeEl) codeEl.textContent = s?.code || '—';
-  if (stEl) {
-    let msg = s?.status || '';
-    if (s?.error) msg += (msg ? ' · ' : '') + s.error;
-    stEl.textContent = msg;
-  }
-  if (canvas && s?.qr_payload && window.QR?.renderCanvas) {
+  const wrap = document.getElementById('pclink-qr-wrap');
+  const connected = s?.status === 'connected';
+  if (codeEl) codeEl.textContent = connected ? '' : (s?.code || '—');
+  if (stEl) stEl.textContent = pcLinkStatusText(s);
+  if (wrap) wrap.hidden = !s?.qr_payload || connected;
+  if (canvas && s?.qr_payload && !connected && window.QR?.renderCanvas) {
     try { QR.renderCanvas(s.qr_payload, canvas, 220); } catch (_) {}
   }
-  if (s?.status === 'connected') {
+  _pclinkLinked = connected;
+  if (!connected) _pclinkSawUnlinked = true;
+  if (connected) {
     stopPcLinkPoll();
-    showChanToast(t('sys.pcLinkConnected'), '', 'ok');
+    // 只在「等待中 → 连上」冒一次；打开时已经连着不要刷 toast
+    if (_pclinkSawUnlinked && !_pclinkToasted) {
+      _pclinkToasted = true;
+      showChanToast(t('sys.pcLinkConnected'), '', 'ok');
+    }
   }
 }
-async function openPcLinkModal() {
+async function openPcLinkModal(opts) {
   stopPcLinkPoll();
-  const info = await bridgeFetch('/pclink/pair-info').catch(e => ({ ok: false, error: e.message || String(e) }));
+  _pclinkToasted = false;
+  _pclinkSawUnlinked = false;
+  _pclinkLinked = false;
+  const fresh = !!(opts && opts.fresh);
+  const info = await bridgeFetch('/pclink/pair-info' + (fresh ? '?fresh=1' : '')).catch(e => ({ ok: false, error: e.message || String(e) }));
   if (!info?.ok) {
     const err = String(info?.error || '');
     const hint = /not found|404/i.test(err)
@@ -1039,15 +1129,25 @@ async function openPcLinkModal() {
   }
   _pclinkPairUrl = info.pairUrl || '';
   openModal('pclink-modal');
-  paintPcLinkStatus({ status: 'starting…', code: null });
+  paintPcLinkStatus(info.status ? info : { status: 'idle', code: info.code, qr_payload: info.qr_payload });
+  if (info.status === 'connected') return;
   const tick = async () => {
-    const s = await bridgeFetch('/pclink/pair-status').catch(e => ({ status: 'error', error: e.message || String(e) }));
-    paintPcLinkStatus(s || {});
+    if (_pclinkTickBusy) return;
+    _pclinkTickBusy = true;
+    try {
+      const s = await bridgeFetch('/pclink/pair-status').catch(e => ({ status: 'error', error: e.message || String(e) }));
+      paintPcLinkStatus(s || {});
+    } finally {
+      _pclinkTickBusy = false;
+    }
   };
   await tick();
-  _pclinkPoll = setInterval(tick, 1000);
+  if (_pclinkLinked) return;
+  const modal = document.getElementById('pclink-modal');
+  if (modal && !modal.hidden) _pclinkPoll = setInterval(tick, 1000);
 }
 bindClick('pclink-btn', (e) => { e.stopPropagation(); openPcLinkModal(); });
+bindClick('pclink-repair', (e) => { e.stopPropagation(); openPcLinkModal({ fresh: true }); });
 bindClick('pclink-open-browser', (e) => {
   e.stopPropagation();
   if (!_pclinkPairUrl) return;

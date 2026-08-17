@@ -858,23 +858,43 @@ class AgentManager:
             else:
                 full = "GenericAgent object has no put_task method"
             is_current, is_cancelled = turn_state()
-            if not is_current:
-                return
-            if is_cancelled:
+            if not is_current or is_cancelled:
+                # Abort / turn superseded: never leave a trailing user with no
+                # assistant — pclink maps each user to a hub task, so an orphan
+                # bubble makes the next reply look glued to the previous turn.
                 with self.lock:
+                    stub = strip_final_info_marker(full) if full else ""
+                    if not stub and sess.partial:
+                        stub = (sess.partial.get("content") or "").strip()
+                    if sess.messages and sess.messages[-1].get("role") == "user":
+                        if stub:
+                            _segs = normalize_final_turn_segs(stub, done_outputs)
+                            if _segs:
+                                self.add_message(sess, "assistant", stub, turn_segs=_segs, stopped=True)
+                            else:
+                                self.add_message(sess, "assistant", stub, stopped=True)
+                        else:
+                            self.add_message(sess, "assistant", "(已停止)", stopped=True)
                     sess.partial = None
                     if sess.active_turn_id == turn_id:
                         sess.active_turn_id = ""
-                    # Ensure status stays cancelled (don't overwrite)
-                    if sess.status != "cancelled":
-                        sess.status = "cancelled"
+                    if sess.status == "running":
+                        sess.status = "cancelled" if is_cancelled or not full else "idle"
                     sess.updated_at = time.time()
-                emit_session_state(sess, "cancelled")
+                emit_session_state(sess, "cancelled" if is_cancelled or not full else "idle")
                 return
             if not full:
                 full = "(completed)"
             with self.lock:
                 if sess.active_turn_id != turn_id:
+                    # Lost the race to abort: still persist body if user is bare.
+                    if sess.messages and sess.messages[-1].get("role") == "user":
+                        full = strip_final_info_marker(full)
+                        _final_segs = normalize_final_turn_segs(full, done_outputs)
+                        if _final_segs:
+                            self.add_message(sess, "assistant", full, turn_segs=_final_segs, stopped=True)
+                        else:
+                            self.add_message(sess, "assistant", full, stopped=True)
                     return
                 sess.partial = None
                 full = strip_final_info_marker(full)
@@ -896,6 +916,8 @@ class AgentManager:
             tb = traceback.format_exc()
             with self.lock:
                 if sess.active_turn_id != turn_id:
+                    if sess.messages and sess.messages[-1].get("role") == "user":
+                        self.add_message(sess, "error", str(e))
                     return
                 sess.partial = None
                 sess.status = "error"
@@ -949,8 +971,14 @@ class AgentManager:
             partial_text = ""
             if sess.partial:
                 partial_text = (sess.partial.get("content") or "").strip()
-            if partial_text:
-                self.add_message(sess, "assistant", partial_text, stopped=True)
+            # Always close the open user turn (empty abort still gets a stub) so
+            # hub/pclink never shows a bare user card that steals the next reply.
+            if sess.messages and sess.messages[-1].get("role") == "user":
+                self.add_message(
+                    sess, "assistant",
+                    partial_text or "(已停止)",
+                    stopped=True,
+                )
             sess.status = "cancelled"
             sess.active_turn_id = ""
             sess.partial = None
@@ -1115,7 +1143,17 @@ def _wire_ga_hub(mgr: AgentManager):
                     tasks[-1]["outputs"].extend(str(x) for x in segs)
             if live and tasks and not tasks[-1]["outputs"]:
                 tasks[-1]["outputs"] = [str(x) for x in live]
-            return tasks
+            # Drop bare consecutive duplicate user cards (retry after empty abort):
+            # otherwise the reply sits on the 2nd card and looks glued to "上一轮".
+            out: list = []
+            for t in tasks:
+                inp = (t.get("input") or "").strip()
+                if (out and not out[-1].get("outputs")
+                        and (out[-1].get("input") or "").strip() == inp):
+                    out[-1] = t
+                else:
+                    out.append(t)
+            return out
 
         def _put(text: str):
             s = _target()
@@ -2280,12 +2318,14 @@ async def _hub_pair_ready(base: str, *, fresh: bool = False) -> dict:
     async with aiohttp.ClientSession(timeout=timeout) as sess:
         async with sess.get(pair) as r:
             await r.read()
-        # fresh create_code 可能要 1–2s 才写出 invite.code
+        # fresh create_code 可能要 1–2s 才写出 invite.code；已连接则没有 code
         data = {}
         for _ in range(15):
             async with sess.get(f"{base}/pair/status") as r:
                 data = await r.json(content_type=None)
-            if isinstance(data, dict) and data.get("code"):
+            if isinstance(data, dict) and (
+                data.get("code") or data.get("status") == "connected"
+            ):
                 return data
             await asyncio.sleep(0.35)
     if not isinstance(data, dict):
@@ -2301,16 +2341,17 @@ async def pclink_pair_info_handler(request):
         return json_ok({"ok": False, "error": f"hub unavailable: {e}"})
     pair_url = f"{base}/pair"
     status_url = f"{base}/pair/status"
+    want_fresh = str(request.query.get("fresh") or "").lower() in ("1", "true", "yes")
     try:
-        st = await _hub_pair_ready(base, fresh=True)
+        st = await _hub_pair_ready(base, fresh=False)
         # OTA 后旧 hub 进程可能仍占端口（无 qr_payload 字段）→ 强制换新
-        if "qr_payload" not in st:
+        if "qr_payload" not in st and st.get("status") != "connected":
             _restart_local_hub()
             base, port = _hub_web_base()
             pair_url = f"{base}/pair"
             status_url = f"{base}/pair/status"
-            st = await _hub_pair_ready(base, fresh=True)
-            if "qr_payload" not in st:
+            st = await _hub_pair_ready(base, fresh=False)
+            if "qr_payload" not in st and st.get("status") != "connected":
                 return json_ok({
                     "ok": False,
                     "error": "hub 未更新，请完全退出并重开 GenericAgent",
@@ -2318,7 +2359,10 @@ async def pclink_pair_info_handler(request):
                     "pairUrl": pair_url,
                     "statusUrl": status_url,
                 })
-        if not st.get("code"):
+        # 已连接不要拆线重发码（否则手机反复重连、桌面一直冒「已连接」）
+        if want_fresh or (st.get("status") != "connected" and not st.get("code")):
+            st = await _hub_pair_ready(base, fresh=True)
+        if st.get("status") != "connected" and not st.get("code"):
             return json_ok({
                 "ok": False,
                 "error": st.get("error") or "配对码生成中，请稍后再试",
@@ -2422,9 +2466,39 @@ async def ota_status_handler(request):
     cur = desktop_ota.current_version(Path(manager.ga_root))
     try:
         out = await asyncio.to_thread(desktop_ota.check, Path(manager.ga_root))
-        return json_ok(out)
     except Exception as e:
         return json_ok({"ok": False, "current": cur, "error": str(e)}, status=502)
+    # runtime channel (preserve updateAvailable = runtime-only for old callers that
+    # only applied runtime; also expose runtimeUpdateAvailable explicitly)
+    out["runtimeUpdateAvailable"] = bool(out.get("updateAvailable"))
+    out["current"] = out.get("current") or cur
+    # shell channel
+    try:
+        import desktop_shell_ota as shell_ota
+        baked = os.environ.get("GA_SHELL_VERSION", "")
+        exe = os.environ.get("GA_SHELL_EXE") or sys.executable
+        anchor = os.environ.get("GA_BUNDLE_ANCHOR") or str(Path(manager.ga_root).parent)
+        shell = await asyncio.to_thread(
+            shell_ota.check,
+            bundle_anchor=Path(anchor),
+            current_exe=Path(exe),
+            shell_baked=baked,
+            shell_pid=os.getppid(),
+        )
+        for k in (
+            "shellCurrent", "shellLatest", "shellUpdateAvailable", "shellBlocked",
+            "shellUnknown", "feedOlder", "shaSource", "layout", "liveApp",
+            "liveRuntimeApp", "assetSize", "tag", "publishedAt", "notes",
+        ):
+            if k in shell:
+                out[k] = shell[k]
+        # Compat: §AN prompt if either channel has an update
+        out["updateAvailable"] = bool(out.get("runtimeUpdateAvailable") or out.get("shellUpdateAvailable"))
+    except Exception as e:
+        out.setdefault("shellUpdateAvailable", False)
+        out.setdefault("shellUnknown", True)
+        out["shellError"] = str(e)
+    return json_ok(out)
 
 
 async def ota_apply_handler(request):
@@ -2439,6 +2513,73 @@ async def ota_apply_handler(request):
         return json_ok(out)
     except Exception as e:
         return json_ok({"ok": False, "error": str(e)}, status=500)
+
+
+async def ota_apply_shell_handler(request):
+    """Download platform package, spawn OS-temp helper, kill hub, exit bridge (B4)."""
+    if not _is_local_peer(request.remote or ""):
+        return json_ok({"ok": False, "error": "forbidden"}, status=403)
+    try:
+        import desktop_shell_ota as shell_ota
+    except Exception as e:
+        return json_ok({"ok": False, "error": f"shell ota module missing: {e}"}, status=500)
+    baked = os.environ.get("GA_SHELL_VERSION", "")
+    exe = os.environ.get("GA_SHELL_EXE") or ""
+    anchor = os.environ.get("GA_BUNDLE_ANCHOR") or str(Path(manager.ga_root).parent)
+    if not exe:
+        return json_ok({"ok": False, "error": "GA_SHELL_EXE unset — rebuild shell"}, status=400)
+    try:
+        out = await asyncio.to_thread(
+            shell_ota.prepare_and_spawn,
+            bundle_anchor=Path(anchor),
+            current_exe=Path(exe),
+            shell_baked=baked,
+            shell_pid=os.getppid(),
+            old_build_id=os.environ.get("GA_BUILD_ID", ""),
+        )
+    except PermissionError as e:
+        return json_ok({"ok": False, "error": str(e), "shellBlocked": True}, status=409)
+    except Exception as e:
+        return json_ok({"ok": False, "error": str(e)}, status=500)
+
+    # B4: fully retire backend before shell exits — kill hub, then schedule bridge exit.
+    # Helper has already been spawned and will wait for shell + bridge pids.
+    try:
+        if str(APP_DIR) not in sys.path:
+            sys.path.insert(0, str(APP_DIR))
+        import hub as ga_hub
+        bus = int(getattr(ga_hub, "PORT", 19736) or 19736)
+        web = int(getattr(ga_hub, "WEB_PORT", bus + 1) or (bus + 1))
+        for port in (bus, web):
+            try:
+                if os.name == "nt":
+                    out_net = subprocess.check_output(
+                        ["netstat", "-ano", "-p", "tcp"], stderr=subprocess.DEVNULL, text=True,
+                    )
+                    for line in out_net.splitlines():
+                        if f":{port}" in line and "LISTENING" in line.upper():
+                            pid = line.split()[-1]
+                            if pid.isdigit():
+                                subprocess.run(
+                                    ["taskkill", "/F", "/PID", pid],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                )
+                else:
+                    lo = subprocess.check_output(
+                        ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                        stderr=subprocess.DEVNULL, text=True,
+                    )
+                    for pid in {p.strip() for p in lo.splitlines() if p.strip().isdigit()}:
+                        with contextlib.suppress(OSError):
+                            os.kill(int(pid), 9)
+            except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+                pass
+    except Exception as e:
+        print(f"[ota] shell apply hub kill: {e}", file=sys.stderr)
+    _exit_bridge()
+    out["exiting"] = True
+    out["needsShellExit"] = True
+    return json_ok(out)
 
 
 async def ota_recycle_handler(request):
@@ -2536,6 +2677,7 @@ def create_app():
     app.router.add_post("/subscription-portal", subscription_portal_handler)
     app.router.add_get("/ota/status", ota_status_handler)
     app.router.add_post("/ota/apply", ota_apply_handler)
+    app.router.add_post("/ota/apply-shell", ota_apply_shell_handler)
     app.router.add_post("/ota/recycle", ota_recycle_handler)
     app.router.add_get("/pclink/pair-info", pclink_pair_info_handler)
     app.router.add_get("/pclink/pair-status", pclink_pair_status_handler)

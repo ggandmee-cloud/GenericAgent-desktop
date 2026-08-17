@@ -527,6 +527,13 @@ fn sanitize_bundle_env(cmd: &mut Command) {
     // Stamp the bridge we spawn with this build's id so a later app launch can tell whether the
     // bridge holding :14168 is ours (see bridge_identity_matches / GET /services/identity).
     cmd.env("GA_BUILD_ID", env!("GA_BUILD_ID"));
+    cmd.env("GA_SHELL_VERSION", env!("CARGO_PKG_VERSION"));
+    if let Ok(exe) = std::env::current_exe() {
+        cmd.env("GA_SHELL_EXE", exe.to_string_lossy().as_ref());
+    }
+    if let Some(anchor) = bundle_anchor_dir() {
+        cmd.env("GA_BUNDLE_ANCHOR", anchor.to_string_lossy().as_ref());
+    }
     // 方案三: when the user has set a valid external GA source, inject it as GA_ROOT so the
     // (bundle's own) bridge + conductor import the external核 and read/write its data. When
     // unset/invalid we leave GA_ROOT unset → the bridge falls back to its own bundle runtime.
@@ -964,6 +971,25 @@ fn restart_runtime(app_handle: tauri::AppHandle) -> Result<String, String> {
     switch_bridge(&app_handle)
 }
 
+/// Baked shell semver (Cargo.toml / tauri.conf — CI-locked).
+#[tauri::command]
+fn get_shell_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// After /ota/apply-shell spawned the helper: quit the shell so helper can swap files.
+#[tauri::command]
+fn exit_for_shell_ota(app_handle: tauri::AppHandle) {
+    eprintln!("[tauri] exit_for_shell_ota");
+    force_free_hub_ports();
+    // Do not respawn bridge — helper expects ports free and shell dead.
+    if let Some(mut child) = BRIDGE_PROCESS.lock().unwrap().take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    app_handle.exit(0);
+}
+
 #[tauri::command]
 fn get_ga_source() -> String {
     read_settings()
@@ -1137,7 +1163,7 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }))
-        .invoke_handler(tauri::generate_handler![start_bridge_with_config, start_bridge, restart_runtime, get_config, export_mykey, pick_directory, get_ga_source, set_ga_source, clear_ga_source, move_ga_runtime, shortcut_should_ask, shortcut_decide, get_prepare_error])
+        .invoke_handler(tauri::generate_handler![start_bridge_with_config, start_bridge, restart_runtime, get_shell_version, exit_for_shell_ota, get_config, export_mykey, pick_directory, get_ga_source, set_ga_source, clear_ga_source, move_ga_runtime, shortcut_should_ask, shortcut_decide, get_prepare_error])
         .setup(move |app| {
             // Show the loading window immediately so the first-run prepare isn't a blank screen.
             // The window starts on loading.html (a local page), so no "connection refused" flash.
