@@ -73,6 +73,8 @@ tar \
   --exclude='assets/demo' --exclude='assets/images' \
   --exclude='assets/GenericAgent_Technical_Report.pdf' \
   --exclude='artifacts' \
+  --exclude='extras' \
+  --exclude='plugins/subscription_portal.py' \
   --exclude='*/node_modules' --exclude='*/target' \
   --exclude='*/.venv' --exclude='.venv' \
   --exclude='*/__pycache__' --exclude='*.pyc' \
@@ -80,8 +82,9 @@ tar \
   --exclude='.DS_Store' \
   -C "$ROOT" -cf - . | tar -xf - -C "$RUNTIME_SRC/app"
 test -f "$RUNTIME_SRC/app/agentmain.py"
-test -f "$RUNTIME_SRC/app/plugins/subscription_portal.py"
-test -f "$RUNTIME_SRC/app/extras/ga-tokenplan-import/ga_tokenplan_import/subscription_portal.py"
+test -f "$RUNTIME_SRC/app/frontends/tokenplan_plugin.py"
+test ! -e "$RUNTIME_SRC/app/extras/ga-tokenplan-import"
+test ! -e "$RUNTIME_SRC/app/plugins/subscription_portal.py"
 
 DMG_APP="$STAGE/GenericAgent.app"
 ditto "$APP_SRC" "$DMG_APP"
@@ -109,7 +112,7 @@ GenericAgent Desktop（本仓桌面版）
 安装
 1. 把 GenericAgent.app 拖进 Applications
 2. 从「应用程序」打开
-3. 设置 / 模型菜单里的 GA Token 会打开 https://plan.khrey.com/
+3. 设置 / 模型菜单里的 GA Token 会打开 https://plan.khrey.com/（本机无插件时先从该站安装）
 
 若提示无法验证开发者：双击 open_anyway.command，或右键 App → 打开。
 EOF

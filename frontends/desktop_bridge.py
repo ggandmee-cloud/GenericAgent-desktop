@@ -2625,18 +2625,30 @@ async def ota_recycle_handler(request):
 
 
 async def subscription_portal_handler(request):
-    manager.ensure_ga_import_path()
+    root = manager.ensure_ga_import_path()
     try:
-        import agentmain as am
-    except Exception:
-        am = None
-    sp = getattr(am, "start_subscription_portal", None) if am else None
+        import tokenplan_plugin as tp
+    except ImportError:
+        from frontends import tokenplan_plugin as tp
     if request.method == "GET":
-        return json_ok({"available": bool(sp)})
+        # Probe only — do not download. Button stays visible; POST installs on demand.
+        st = await asyncio.to_thread(tp.probe_status, root)
+        return json_ok({
+            "available": bool(st.get("available")),
+            "installed": bool(st.get("installed")),
+            "source": st.get("source"),
+        })
+    try:
+        sp = await asyncio.to_thread(tp.ensure_start, root)
+    except Exception as e:
+        return json_ok({"ok": False, "available": False, "error": str(e)}, status=503)
     if not sp:
-        return json_ok({"ok": False, "available": False}, status=404)
-    sp()
-    return json_ok({"ok": True})
+        return json_ok({"ok": False, "available": False, "error": "plugin unavailable"}, status=404)
+    try:
+        await asyncio.to_thread(sp)
+    except Exception as e:
+        return json_ok({"ok": False, "available": True, "error": str(e)}, status=500)
+    return json_ok({"ok": True, "available": True})
 
 
 def create_app():
