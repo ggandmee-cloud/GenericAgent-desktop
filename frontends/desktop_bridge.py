@@ -84,6 +84,7 @@ def find_default_ga_root() -> Path:
 
 
 DEFAULT_GA_ROOT = find_default_ga_root()
+os.environ["GA_ROOT"] = str(DEFAULT_GA_ROOT)
 
 _FINAL_INFO_RE = re.compile(r'\n*`{5}\n*\[Info\] Final response to user\.\n*`{5}\s*$')
 

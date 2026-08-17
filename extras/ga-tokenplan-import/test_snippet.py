@@ -37,5 +37,21 @@ class SnippetTests(unittest.TestCase):
         self.assertEqual(t2.count(BEGIN), 1)
 
 
+class RootTests(unittest.TestCase):
+    def test_extras_layout_resolves_running_tree(self):
+        from ga_tokenplan_import.subscription_portal import _ga_root
+        extras_root = Path(__file__).resolve().parents[2]
+        self.assertTrue((extras_root / "agentmain.py").is_file())
+        saved = {k: os.environ.pop(k, None) for k in ("GA_ROOT", "GENERICAGENT_ROOT")}
+        try:
+            self.assertEqual(_ga_root(), extras_root)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+
 if __name__ == "__main__":
     unittest.main()

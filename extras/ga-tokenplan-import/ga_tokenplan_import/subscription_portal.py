@@ -27,6 +27,19 @@ def _ga_root() -> Path:
     here = Path(__file__).resolve()
     if here.parent.name == "plugins":
         return here.parent.parent
+    # extras/ga-tokenplan-import/ga_tokenplan_import/this.py → running GA root
+    pkg = here.parent
+    if pkg.name == "ga_tokenplan_import":
+        extras = pkg.parent.parent
+        if extras.name == "extras" and (extras.parent / "agentmain.py").is_file():
+            return extras.parent
+    try:
+        import agentmain
+        am = Path(getattr(agentmain, "__file__", "") or "").resolve().parent
+        if (am / "agentmain.py").is_file():
+            return am
+    except Exception:
+        pass
     return Path.home() / "GA" / "GenericAgent"
 
 
