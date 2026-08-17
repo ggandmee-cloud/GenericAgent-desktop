@@ -2225,7 +2225,72 @@ def _hub_web_base() -> tuple[str, int]:
     except Exception:
         pass
     port = int(getattr(ga_hub, "WEB_PORT", 19737) or 19737)
+    # hub.serve() 是异步拉起子进程，刚启动时端口可能尚未 LISTEN
+    import socket
+    deadline = time.time() + 6
+    while time.time() < deadline:
+        with socket.socket() as s:
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                break
+        time.sleep(0.2)
     return f"http://127.0.0.1:{port}", port
+
+
+def _restart_local_hub() -> None:
+    """Kill stale local hub listeners and spawn a fresh hub.py (picks up OTA hub_p2p)."""
+    if str(APP_DIR) not in sys.path:
+        sys.path.insert(0, str(APP_DIR))
+    import hub as ga_hub  # noqa: WPS433
+    bus = int(getattr(ga_hub, "PORT", 19736) or 19736)
+    web = int(getattr(ga_hub, "WEB_PORT", bus + 1) or (bus + 1))
+    for port in (bus, web):
+        try:
+            out = subprocess.check_output(
+                ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                stderr=subprocess.DEVNULL, text=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+            out = ""
+        for pid in {p.strip() for p in out.splitlines() if p.strip().isdigit()}:
+            try:
+                os.kill(int(pid), 15)
+            except OSError:
+                pass
+    # brief wait so ports free; then spawn
+    time.sleep(0.4)
+    try:
+        ga_hub.serve()
+    except Exception:
+        pass
+    # wait until web port accepts
+    import socket
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        with socket.socket() as s:
+            if s.connect_ex(("127.0.0.1", web)) == 0:
+                return
+        time.sleep(0.15)
+
+
+async def _hub_pair_ready(base: str, *, fresh: bool = False) -> dict:
+    """GET /pair then /pair/status; return status dict or raise."""
+    import aiohttp
+    timeout = aiohttp.ClientTimeout(total=8)
+    pair = f"{base}/pair" + ("?fresh=1" if fresh else "")
+    async with aiohttp.ClientSession(timeout=timeout) as sess:
+        async with sess.get(pair) as r:
+            await r.read()
+        # fresh create_code 可能要 1–2s 才写出 invite.code
+        data = {}
+        for _ in range(15):
+            async with sess.get(f"{base}/pair/status") as r:
+                data = await r.json(content_type=None)
+            if isinstance(data, dict) and data.get("code"):
+                return data
+            await asyncio.sleep(0.35)
+    if not isinstance(data, dict):
+        raise RuntimeError("bad pair status")
+    return data
 
 
 async def pclink_pair_info_handler(request):
@@ -2236,13 +2301,32 @@ async def pclink_pair_info_handler(request):
         return json_ok({"ok": False, "error": f"hub unavailable: {e}"})
     pair_url = f"{base}/pair"
     status_url = f"{base}/pair/status"
-    # Touch /pair so create_code starts even if the user never opens the browser page.
     try:
-        import aiohttp
-        timeout = aiohttp.ClientTimeout(total=3)
-        async with aiohttp.ClientSession(timeout=timeout) as sess:
-            async with sess.get(pair_url) as r:
-                await r.read()
+        st = await _hub_pair_ready(base, fresh=True)
+        # OTA 后旧 hub 进程可能仍占端口（无 qr_payload 字段）→ 强制换新
+        if "qr_payload" not in st:
+            _restart_local_hub()
+            base, port = _hub_web_base()
+            pair_url = f"{base}/pair"
+            status_url = f"{base}/pair/status"
+            st = await _hub_pair_ready(base, fresh=True)
+            if "qr_payload" not in st:
+                return json_ok({
+                    "ok": False,
+                    "error": "hub 未更新，请完全退出并重开 GenericAgent",
+                    "hubWebBase": base,
+                    "pairUrl": pair_url,
+                    "statusUrl": status_url,
+                })
+        if not st.get("code"):
+            return json_ok({
+                "ok": False,
+                "error": st.get("error") or "配对码生成中，请稍后再试",
+                "hubWebBase": base,
+                "pairUrl": pair_url,
+                "statusUrl": status_url,
+                "status": st.get("status"),
+            })
     except Exception as e:
         return json_ok({
             "ok": False,
@@ -2256,6 +2340,9 @@ async def pclink_pair_info_handler(request):
         "hubWebBase": base,
         "pairUrl": pair_url,
         "statusUrl": status_url,
+        "status": st.get("status"),
+        "code": st.get("code"),
+        "qr_payload": st.get("qr_payload"),
     })
 
 
@@ -2354,6 +2441,48 @@ async def ota_apply_handler(request):
         return json_ok({"ok": False, "error": str(e)}, status=500)
 
 
+async def ota_recycle_handler(request):
+    """Kill detached hub listeners + schedule bridge exit (OTA / restart_runtime fallback)."""
+    if not _is_local_peer(request.remote or ""):
+        return json_ok({"ok": False, "error": "forbidden"}, status=403)
+    # Only free hub ports; do not respawn here — shell will start a fresh bridge which
+    # calls hub.serve() and loads the on-disk hub_p2p.
+    try:
+        if str(APP_DIR) not in sys.path:
+            sys.path.insert(0, str(APP_DIR))
+        import hub as ga_hub
+        bus = int(getattr(ga_hub, "PORT", 19736) or 19736)
+        web = int(getattr(ga_hub, "WEB_PORT", bus + 1) or (bus + 1))
+        for port in (bus, web):
+            try:
+                if os.name == "nt":
+                    out = subprocess.check_output(
+                        ["netstat", "-ano", "-p", "tcp"], stderr=subprocess.DEVNULL, text=True,
+                    )
+                    for line in out.splitlines():
+                        if f":{port}" in line and "LISTENING" in line.upper():
+                            pid = line.split()[-1]
+                            if pid.isdigit():
+                                subprocess.run(
+                                    ["taskkill", "/F", "/PID", pid],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                )
+                else:
+                    out = subprocess.check_output(
+                        ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                        stderr=subprocess.DEVNULL, text=True,
+                    )
+                    for pid in {p.strip() for p in out.splitlines() if p.strip().isdigit()}:
+                        with contextlib.suppress(OSError):
+                            os.kill(int(pid), 9)
+            except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+                pass
+    except Exception as e:
+        print(f"[ota] hub recycle: {e}", file=sys.stderr)
+    _exit_bridge()
+    return json_ok({"ok": True, "exiting": True})
+
+
 async def subscription_portal_handler(request):
     manager.ensure_ga_import_path()
     try:
@@ -2407,6 +2536,7 @@ def create_app():
     app.router.add_post("/subscription-portal", subscription_portal_handler)
     app.router.add_get("/ota/status", ota_status_handler)
     app.router.add_post("/ota/apply", ota_apply_handler)
+    app.router.add_post("/ota/recycle", ota_recycle_handler)
     app.router.add_get("/pclink/pair-info", pclink_pair_info_handler)
     app.router.add_get("/pclink/pair-status", pclink_pair_status_handler)
     app.router.add_post("/services/start", service_start_handler)

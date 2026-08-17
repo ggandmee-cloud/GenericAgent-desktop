@@ -39,6 +39,7 @@ CI：推送标签 `desktop-portable-*` 会打三端并挂到同一个 Release（
 - 版本来源：仓库根 `VERSION` vs manifest `version`；有 runtime 资产且版本不同即提示更新
 - 覆盖时保护用户数据：`mykey.py`、`temp/`、`memory/`、`tasks/`、`.venv/` 等永不写入（见 `frontends/desktop_ota.py` 的 `PROTECTED`）
 - manifest 内联 `sha256`（或 GitHub 旁路 `.sha256` 资产）下载后校验
+- 更新成功后壳层调用 `restart_runtime`：杀掉 detached hub（19736/19737）并重启 bridge，再刷新页面——**仅 `location.reload` 不够**
 - 换更新源：`GA_OTA_FEED=<url>`；回落 GitHub：`GA_OTA_REPO=owner/name`
 - 发新版：改 `VERSION`，推标签 `desktop-portable-<版本>`，CI 打三端并挂 Release，随后 **自动镜像**到 [plan.khrey.com/desktop/](https://plan.khrey.com/desktop/)（job `publish-plan-khrey`，脚本 `frontends/desktop/packaging/scripts/sync_plan_khrey_desktop.sh`）
 - 镜像所需仓库 Secrets：`PLAN_KHREY_SSH_HOST`、`PLAN_KHREY_SSH_USER`、`PLAN_KHREY_SSH_KEY`（可选 `PLAN_KHREY_DESKTOP_DIR` / `PLAN_KHREY_PUBLIC_BASE` / `PLAN_KHREY_SSH_PORT`）

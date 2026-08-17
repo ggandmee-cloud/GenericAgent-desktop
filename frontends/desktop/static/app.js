@@ -876,7 +876,41 @@ async function otaApplyUpdate() {
   otaState = 'done';
   otaSyncDesc(`${t('sys.otaDone')} (v${r.current})`);
   showChanToast(t('sys.otaDone'), `v${r.previous || ''} → v${r.current}`, 'ok');
+  // OTA 只写磁盘；必须换掉旧 bridge/hub 进程，location.reload 不够。
+  await otaRestartRuntime();
   return r;
+}
+
+/** Kill stale hub + respawn bridge via Tauri (fallback: /ota/recycle + start_bridge). */
+async function otaRestartRuntime() {
+  otaSyncDesc(t('sys.otaRestarting'));
+  showChanToast(t('sys.otaRestarting'), '', 'ok');
+  try {
+    if (window.__TAURI__?.core?.invoke) {
+      await window.ga.tauriInvoke('restart_runtime');
+      location.reload();
+      return;
+    }
+  } catch (err) {
+    console.warn('[ota] restart_runtime failed, fallback', err);
+  }
+  try { await bridgeFetch('/ota/recycle', { method: 'POST' }); } catch (_) {}
+  // bridge exiting — wait for port to free, then ask shell to spawn again
+  for (let i = 0; i < 40; i++) {
+    try {
+      await bridgeFetch('/status');
+      await new Promise(r => setTimeout(r, 200));
+    } catch (_) {
+      break;
+    }
+  }
+  try {
+    if (window.__TAURI__?.core?.invoke) await window.ga.tauriInvoke('start_bridge');
+  } catch (err) {
+    showChanToast(t('err.ota'), err.message || String(err), 'err');
+    return;
+  }
+  location.reload();
 }
 
 async function otaPromptRequiredUpdate(s) {
@@ -890,18 +924,7 @@ async function otaPromptRequiredUpdate(s) {
   });
   if (!go) return;
   try {
-    const r = await otaApplyUpdate();
-    if (r?.upToDate || otaState !== 'done') return;
-    const restart = await showConfirmDialog({
-      title: t('sys.otaDone'),
-      message: t('sys.otaRestartMsg', {
-        previous: r.previous || s.current,
-        current: r.current || s.latest,
-      }),
-      okText: t('sys.otaRestartNow'),
-      required: true,
-    });
-    if (restart) location.reload();
+    await otaApplyUpdate();
   } catch (err) {
     otaState = 'found';
     otaSyncDesc(t('set.checkUpdateTip'));
@@ -930,15 +953,13 @@ bindClick('check-update-btn', async (e) => {
   if (otaState === 'done') { showChanToast(t('sys.otaDone'), '', 'ok'); return; }
   try {
     if (otaState === 'found') {
-      const r = await otaApplyUpdate();
-      if (r?.upToDate || otaState !== 'done') return;
-      const restart = await showConfirmDialog({
-        title: t('sys.otaDone'),
-        message: t('sys.otaRestartMsg', { previous: r.previous || '', current: r.current || '' }),
-        okText: t('sys.otaRestartNow'),
-        required: true,
-      });
-      if (restart) location.reload();
+      try {
+        await otaApplyUpdate();
+      } catch (err) {
+        otaState = 'found';
+        otaSyncDesc(t('set.checkUpdateTip'));
+        showChanToast(t('err.ota'), err.message || String(err), 'err');
+      }
       return;
     }
     otaSyncDesc(t('sys.otaChecking'));
@@ -1009,7 +1030,11 @@ async function openPcLinkModal() {
   stopPcLinkPoll();
   const info = await bridgeFetch('/pclink/pair-info').catch(e => ({ ok: false, error: e.message || String(e) }));
   if (!info?.ok) {
-    showChanToast(t('err.pcLink'), info?.error || '', 'err');
+    const err = String(info?.error || '');
+    const hint = /not found|404/i.test(err)
+      ? '请完全退出并重开 GenericAgent（OTA 后需重启）'
+      : (err || '');
+    showChanToast(t('err.pcLink'), hint, 'err');
     return;
   }
   _pclinkPairUrl = info.pairUrl || '';

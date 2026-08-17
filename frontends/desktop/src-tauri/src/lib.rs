@@ -707,13 +707,18 @@ fn bridge_identity_matches(project_dir: &str) -> bool {
 /// no such endpoint): force-kill whatever process is listening on :14168 so the new bridge can
 /// bind it. Only called after an identity mismatch, so we never kill a bridge that is ours.
 fn force_free_bridge_port() {
+    force_free_tcp_port(14168);
+}
+
+fn force_free_tcp_port(port: u16) {
     #[cfg(windows)]
     {
-        // netstat -ano: last column is the PID for the :14168 LISTENING row.
+        let port_tok = format!(":{}", port);
+        // netstat -ano: last column is the PID for the LISTENING row.
         if let Ok(out) = Command::new("netstat").args(["-ano", "-p", "tcp"]).output() {
             let text = String::from_utf8_lossy(&out.stdout);
             for line in text.lines() {
-                if line.contains(":14168") && line.to_uppercase().contains("LISTENING") {
+                if line.contains(&port_tok) && line.to_uppercase().contains("LISTENING") {
                     if let Some(pid) = line.split_whitespace().last() {
                         let mut c = Command::new("taskkill");
                         c.args(["/F", "/PID", pid]);
@@ -726,13 +731,20 @@ fn force_free_bridge_port() {
     }
     #[cfg(not(windows))]
     {
-        // lsof prints the listening PIDs; kill -9 each.
-        if let Ok(out) = Command::new("lsof").args(["-ti", "tcp:14168", "-sTCP:LISTEN"]).output() {
+        let arg = format!("tcp:{}", port);
+        if let Ok(out) = Command::new("lsof").args(["-ti", &arg, "-sTCP:LISTEN"]).output() {
             for pid in String::from_utf8_lossy(&out.stdout).split_whitespace() {
                 let _ = Command::new("kill").args(["-9", pid]).status();
             }
         }
     }
+}
+
+/// Kill detached GA hub listeners (bus + panel). Hub outlives the bridge by design, so OTA must
+/// free these ports or the next bridge will keep talking to a stale hub.py.
+fn force_free_hub_ports() {
+    force_free_tcp_port(19736);
+    force_free_tcp_port(19737);
 }
 
 fn request_bridge_shutdown() {
@@ -944,6 +956,14 @@ fn switch_bridge(app_handle: &tauri::AppHandle) -> Result<String, String> {
     Ok(expected_ga_root)
 }
 
+/// OTA / in-place runtime update: free detached hub + restart bridge so new Python files load.
+#[tauri::command]
+fn restart_runtime(app_handle: tauri::AppHandle) -> Result<String, String> {
+    eprintln!("[tauri] restart_runtime: freeing hub ports + respawning bridge");
+    force_free_hub_ports();
+    switch_bridge(&app_handle)
+}
+
 #[tauri::command]
 fn get_ga_source() -> String {
     read_settings()
@@ -1117,7 +1137,7 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }))
-        .invoke_handler(tauri::generate_handler![start_bridge_with_config, start_bridge, get_config, export_mykey, pick_directory, get_ga_source, set_ga_source, clear_ga_source, move_ga_runtime, shortcut_should_ask, shortcut_decide, get_prepare_error])
+        .invoke_handler(tauri::generate_handler![start_bridge_with_config, start_bridge, restart_runtime, get_config, export_mykey, pick_directory, get_ga_source, set_ga_source, clear_ga_source, move_ga_runtime, shortcut_should_ask, shortcut_decide, get_prepare_error])
         .setup(move |app| {
             // Show the loading window immediately so the first-run prepare isn't a blank screen.
             // The window starts on loading.html (a local page), so no "connection refused" flash.

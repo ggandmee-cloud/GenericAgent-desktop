@@ -65,7 +65,42 @@ def install(app, *, web_port, token, here):
         except Exception as exc:
             state["status"], state["error"] = "error", str(exc)
 
-    def _ensure_pair_task():
+    def _clear_saved_room():
+        try:
+            path = Path(rooms).expanduser()
+            data = {}
+            if path.is_file():
+                import json
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    data = {}
+            if name in data:
+                data.pop(name, None)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    __import__("json").dumps(data, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+        except Exception:
+            pass
+
+    async def _start_fresh_pair():
+        task = state["task"]
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        state["invite"] = None
+        state["status"], state["error"] = "idle", None
+        _clear_saved_room()
+        state["task"] = asyncio.create_task(new_pair())
+
+    def _ensure_pair_task(*, fresh: bool = False):
+        if fresh:
+            # scheduled by caller via create_task(_start_fresh_pair)
+            return
         task = state["task"]
         if task is None or task.done():
             try:
@@ -76,8 +111,11 @@ def install(app, *, web_port, token, here):
                 state["task"] = asyncio.create_task(reconnect())
 
     @app.get("/pair")
-    async def pair():
-        _ensure_pair_task()
+    async def pair(fresh: int = 0):
+        if fresh:
+            await _start_fresh_pair()
+        else:
+            _ensure_pair_task()
         return Response(content=_PAIR_HTML, media_type="text/html; charset=utf-8")
 
     @app.get("/pair/qr.js")
