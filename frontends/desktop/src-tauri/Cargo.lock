@@ -1191,7 +1191,9 @@ dependencies = [
 
 [[package]]
 name = "ga-desktop"
-version = "0.1.14"dirs 5.0.1",
+version = "0.1.15"
+dependencies = [
+ "dirs 5.0.1",
  "rfd",
  "serde",
  "serde_json",
