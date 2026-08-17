@@ -25,6 +25,7 @@ TAG_PREFIX = "desktop-portable-"
 PROTECTED = (
     "mykey.py", "mykey.py.imported", "mykey.json", "auth.json",
     "temp/", "tmp/", "memory/", "tasks/", ".venv/", ".git/", ".streamlit/",
+    "plugins/subscription_portal.py",
 )
 _UA = {"User-Agent": "GA-Desktop-OTA", "Accept": "application/vnd.github+json"}
 

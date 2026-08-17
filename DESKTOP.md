@@ -2,7 +2,7 @@
 
 这是本地桌面版工作树，基于 [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent)，不是官方仓。
 
-TokenPlan 导入 **开箱即用**，门户 [https://plan.khrey.com/](https://plan.khrey.com/)。`mykey.py` 不会进 git / 不会打进安装包。
+TokenPlan 导入与上游 GAnet 插件同款：**先探测本机，缺失再从 [plan.khrey.com](https://plan.khrey.com/) 安装**。`mykey.py` 不会进 git / 不会打进安装包。
 
 ## 安装包（给别人用）
 
@@ -18,7 +18,7 @@ https://github.com/ggandmee-cloud/GenericAgent-desktop/releases
 
 macOS 若提示无法验证开发者：DMG 里双击 `open_anyway.command`，或右键 App → 打开。
 
-启动后设置 / 模型菜单点 **GA Token** 即打开 plan.khrey.com，本机 34134 写入 key。
+启动后设置 / 模型菜单点 **GA Token**：先探测 `plugins/subscription_portal.py`（源码树还会探测 `extras/ga-tokenplan-import`），没有则从 `https://plan.khrey.com/desktop/plugin-manifest.json` 校验安装，再打开门户，本机 34134 写入 key。
 
 **手机互联**：设置 → **手机互联** 出示二维码（或打开 hub `/pair`）。手机 GA → 设置 → **PC 互联** → 扫码连接（载荷 `ga-pclink:v1:` + 9 位码；也可手输）。协议仍是既有 hub_p2p，不改信号服。
 
@@ -50,4 +50,4 @@ CI：推送标签 `desktop-portable-*` 会打三端并挂到同一个 Release（
 
 开发启动见 `frontends/desktop/`。macOS 装机说明：`docs/macos_desktop_installation_zh.md`。
 
-换门户 / 邀请码：`GA_TOKENPLAN_URL`、`GA_TOKENPLAN_INVITE`。关掉导入：删 `plugins/subscription_portal.py` 后重启。
+换门户 / 邀请码：`GA_TOKENPLAN_URL`、`GA_TOKENPLAN_INVITE`。插件清单：`GA_TOKENPLAN_PLUGIN_MANIFEST`。关掉导入：删 `plugins/subscription_portal.py` 后重启（下次点 GA Token 会再探测并安装）。

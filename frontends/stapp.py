@@ -90,6 +90,12 @@ agent = init()
 # NOTE: never abort merely because a new session appeared (F5 / 2nd tab / external probe).
 # Aborting is an *intent*, triggered only by a new prompt or the Stop button.
 _sp = getattr(agentmain, "start_subscription_portal", None)
+if _sp is None:
+    try:
+        from frontends.tokenplan_plugin import probe_start
+        _sp = probe_start()
+    except Exception:
+        _sp = None
 
 @st.fragment(run_every=timedelta(seconds=2))
 def _watch_portal():

@@ -1,4 +1,4 @@
-> 本仓库是桌面版工作树（非官方 [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent)）。TokenPlan 导入开箱即用，门户 [plan.khrey.com](https://plan.khrey.com/)，见 [DESKTOP.md](DESKTOP.md)。
+> 本仓库是桌面版工作树（非官方 [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent)）。TokenPlan 导入先探测本机插件，缺失则从 [plan.khrey.com](https://plan.khrey.com/) 安装，见 [DESKTOP.md](DESKTOP.md)。
 
 <div align="center">
 

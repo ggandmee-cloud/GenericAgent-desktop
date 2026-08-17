@@ -132,6 +132,8 @@ jobs:
             --exclude='./assets/demo' --exclude='./assets/images' \
             --exclude='./assets/GenericAgent_Technical_Report.pdf' \
             --exclude='./artifacts' \
+            --exclude='./extras' \
+            --exclude='./plugins/subscription_portal.py' \
             --exclude='*/node_modules' --exclude='*/target' \
             --exclude='*/.venv' --exclude='./.venv' \
             --exclude='*/__pycache__' --exclude='*.pyc' \
@@ -139,6 +141,9 @@ jobs:
           test -f "$RUNTIME/app/agentmain.py"
           test -f "$RUNTIME/app/frontends/desktop_bridge.py"
           test -f "$RUNTIME/app/frontends/desktop/static/index.html"
+          test -f "$RUNTIME/app/frontends/tokenplan_plugin.py"
+          test ! -e "$RUNTIME/app/extras/ga-tokenplan-import"
+          test ! -e "$RUNTIME/app/plugins/subscription_portal.py"
           # packaging/ is excluded from the runtime tar — shell OTA helpers must be copied in.
           mkdir -p "$RUNTIME/app/frontends/desktop/packaging/scripts/shell_ota"
           cp -R frontends/desktop/packaging/scripts/shell_ota/. "$RUNTIME/app/frontends/desktop/packaging/scripts/shell_ota/"
@@ -230,9 +235,9 @@ jobs:
           GenericAgent Desktop 桌面版 / Desktop
 
           无需自行安装 Python、无需联网安装依赖、无需源码；首次启动会自动准备内置运行环境。
-          本构建开箱即用 TokenPlan：设置里 GA Token 打开 https://plan.khrey.com/ 。
+          本构建 TokenPlan 导入：设置里 GA Token 先探测本机插件，缺失则从 plan.khrey.com 安装。
           No separate Python install, no internet for dependencies, no source checkout required; the bundled runtime is prepared on first launch.
-          TokenPlan import is enabled: GA Token in settings opens https://plan.khrey.com/ .
+          TokenPlan import probes locally then installs from plan.khrey.com if missing.
           设置里「检查更新」可 OTA 更新运行时到最新 Release（`GenericAgent-runtime.tar.gz`，无需重装）。
           In-app "Check for updates" OTA-updates the runtime from the latest release (no reinstall needed).
 
@@ -358,6 +363,8 @@ jobs:
             --exclude='./assets/demo' --exclude='./assets/images' \
             --exclude='./assets/GenericAgent_Technical_Report.pdf' \
             --exclude='./artifacts' \
+            --exclude='./extras' \
+            --exclude='./plugins/subscription_portal.py' \
             --exclude='*/node_modules' --exclude='*/target' \
             --exclude='*/.venv' --exclude='./.venv' \
             --exclude='*/__pycache__' --exclude='*.pyc' \
@@ -365,6 +372,9 @@ jobs:
           test -f "$RUNTIME/app/agentmain.py"
           test -f "$RUNTIME/app/frontends/desktop_bridge.py"
           test -f "$RUNTIME/app/frontends/desktop/static/index.html"
+          test -f "$RUNTIME/app/frontends/tokenplan_plugin.py"
+          test ! -e "$RUNTIME/app/extras/ga-tokenplan-import"
+          test ! -e "$RUNTIME/app/plugins/subscription_portal.py"
           mkdir -p "$RUNTIME/app/frontends/desktop/packaging/scripts/shell_ota"
           cp -R frontends/desktop/packaging/scripts/shell_ota/. "$RUNTIME/app/frontends/desktop/packaging/scripts/shell_ota/"
           test -f "$RUNTIME/app/frontends/desktop/packaging/scripts/shell_ota/linux.sh"
@@ -459,9 +469,9 @@ jobs:
           GenericAgent Desktop 桌面版 / Desktop
 
           无需自行安装 Python、无需联网安装依赖、无需源码；首次启动会自动准备内置运行环境。
-          本构建开箱即用 TokenPlan：设置里 GA Token 打开 https://plan.khrey.com/ 。
+          本构建 TokenPlan 导入：设置里 GA Token 先探测本机插件，缺失则从 plan.khrey.com 安装。
           No separate Python install, no internet for dependencies, no source checkout required; the bundled runtime is prepared on first launch.
-          TokenPlan import is enabled: GA Token in settings opens https://plan.khrey.com/ .
+          TokenPlan import probes locally then installs from plan.khrey.com if missing.
           设置里「检查更新」可 OTA 更新运行时到最新 Release（`GenericAgent-runtime.tar.gz`，无需重装）。
           In-app "Check for updates" OTA-updates the runtime from the latest release (no reinstall needed).
 
@@ -581,6 +591,8 @@ jobs:
             --exclude='assets/demo' --exclude='assets/images' \
             --exclude='assets/GenericAgent_Technical_Report.pdf' \
             --exclude='artifacts' \
+            --exclude='extras' \
+            --exclude='plugins/subscription_portal.py' \
             --exclude='*/node_modules' --exclude='*/target' \
             --exclude='*/.venv' --exclude='.venv' \
             --exclude='*/__pycache__' --exclude='*.pyc' \
@@ -588,6 +600,9 @@ jobs:
           test -f "$RUNTIME_SRC/app/agentmain.py"
           test -f "$RUNTIME_SRC/app/frontends/desktop_bridge.py"
           test -f "$RUNTIME_SRC/app/frontends/desktop/static/index.html"
+          test -f "$RUNTIME_SRC/app/frontends/tokenplan_plugin.py"
+          test ! -e "$RUNTIME_SRC/app/extras/ga-tokenplan-import"
+          test ! -e "$RUNTIME_SRC/app/plugins/subscription_portal.py"
           mkdir -p "$RUNTIME_SRC/app/frontends/desktop/packaging/scripts/shell_ota"
           cp -R frontends/desktop/packaging/scripts/shell_ota/. "$RUNTIME_SRC/app/frontends/desktop/packaging/scripts/shell_ota/"
           test -f "$RUNTIME_SRC/app/frontends/desktop/packaging/scripts/shell_ota/macos.sh"
@@ -732,9 +747,9 @@ jobs:
           GenericAgent Desktop 桌面版 / Desktop
 
           无需自行安装 Python、无需联网安装依赖、无需源码；首次启动会自动准备内置运行环境。
-          本构建开箱即用 TokenPlan：设置里 GA Token 打开 https://plan.khrey.com/ 。
+          本构建 TokenPlan 导入：设置里 GA Token 先探测本机插件，缺失则从 plan.khrey.com 安装。
           No separate Python install, no internet for dependencies, no source checkout required; the bundled runtime is prepared on first launch.
-          TokenPlan import is enabled: GA Token in settings opens https://plan.khrey.com/ .
+          TokenPlan import probes locally then installs from plan.khrey.com if missing.
           设置里「检查更新」可 OTA 更新运行时到最新 Release（`GenericAgent-runtime.tar.gz`，无需重装）。
           In-app "Check for updates" OTA-updates the runtime from the latest release (no reinstall needed).
 

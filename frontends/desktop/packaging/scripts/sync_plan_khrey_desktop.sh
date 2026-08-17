@@ -104,14 +104,25 @@ for f in "${REQUIRED[@]}"; do
   [[ -f "$WORKDIR/files/$f" ]] || { echo "download failed: $f" >&2; exit 1; }
 done
 
+echo "==> pack TokenPlan plugin"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+python3 "$REPO_ROOT/extras/ga-tokenplan-import/pack_release.py" \
+  --out-dir "$WORKDIR/files" \
+  --public-base "$PUBLIC_BASE"
+mv "$WORKDIR/files/plugin-manifest.json" "$WORKDIR/plugin-manifest.json"
+PLUGIN_ZIP="$(ls "$WORKDIR/files"/ga-tokenplan-import-*.zip | head -1)"
+[[ -n "$PLUGIN_ZIP" && -f "$PLUGIN_ZIP" ]] || { echo "plugin zip missing after pack" >&2; exit 1; }
+
 echo "==> build latest.json"
-python3 - "$WORKDIR" "$TAG" "$PUBLIC_BASE" "$META_JSON" <<'PY'
+python3 - "$WORKDIR" "$TAG" "$PUBLIC_BASE" "$META_JSON" "$WORKDIR/plugin-manifest.json" <<'PY'
 import hashlib, json, re, sys
 from pathlib import Path
 
-work, tag, base, meta_path = Path(sys.argv[1]), sys.argv[2], sys.argv[3].rstrip("/"), Path(sys.argv[4])
+work, tag, base, meta_path, plugin_path = Path(sys.argv[1]), sys.argv[2], sys.argv[3].rstrip("/"), Path(sys.argv[4]), Path(sys.argv[5])
 files = work / "files"
 meta = json.loads(meta_path.read_text(encoding="utf-8"))
+plugin = json.loads(plugin_path.read_text(encoding="utf-8"))
 
 def sha_of(name: str) -> str:
     p = files / name
@@ -153,15 +164,23 @@ out = {
         "macos": asset("GenericAgent-Desktop-macOS.dmg"),
         "linux": asset("GenericAgent-Desktop-Linux-Portable.tar.gz"),
     },
+    "plugin": plugin,
 }
 (work / "latest.json").write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-print(json.dumps({"version": ver, "tag": tag, "runtime_sha": out["runtime"]["sha256"][:16]}, ensure_ascii=False))
+print(json.dumps({
+    "version": ver,
+    "tag": tag,
+    "runtime_sha": out["runtime"]["sha256"][:16],
+    "plugin": plugin.get("version"),
+    "plugin_sha": str(plugin.get("sha256") or "")[:16],
+}, ensure_ascii=False))
 PY
 
 if [[ "$DRY" -eq 1 ]]; then
   echo "==> dry-run: would rsync to ${USER}@${HOST}:${REMOTE_DIR}/"
   ls -lh "$WORKDIR/files"
   cat "$WORKDIR/latest.json"
+  cat "$WORKDIR/plugin-manifest.json"
   exit 0
 fi
 
@@ -172,7 +191,9 @@ rsync -av --checksum -e "$RSYNC_SSH" \
   "$WORKDIR/files/GenericAgent-Desktop-macOS.dmg" \
   "$WORKDIR/files/GenericAgent-Desktop-Linux-Portable.tar.gz" \
   "$WORKDIR/files/GenericAgent-runtime.tar.gz" \
+  "$PLUGIN_ZIP" \
   "$WORKDIR/latest.json" \
+  "$WORKDIR/plugin-manifest.json" \
   "${USER}@${HOST}:${REMOTE_DIR}/"
 
 # Keep optional sidecar if present
@@ -187,5 +208,6 @@ if [[ -n "$CHOWN_TO" ]]; then
 fi
 
 echo "==> verify public feed"
-curl -fsS "${PUBLIC_BASE%/files}/latest.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["version"], d["tag"], d["runtime"]["sha256"][:16])'
+curl -fsS "${PUBLIC_BASE%/files}/latest.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d.get("plugin") or {}; print(d["version"], d["tag"], d["runtime"]["sha256"][:16], p.get("version"), str(p.get("sha256") or "")[:16])'
+curl -fsS "${PUBLIC_BASE%/files}/plugin-manifest.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("plugin", d["version"], d["sha256"][:16], d["url"])'
 echo "OK mirrored $TAG → plan.khrey.com/desktop/"

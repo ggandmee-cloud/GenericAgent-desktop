@@ -1050,19 +1050,22 @@ function syncGaTokenEntry() {
   if (gaTokenBtn) gaTokenBtn.hidden = !gaTokenPortalAvailable;
 }
 bridgeFetch('/subscription-portal').then(r => {
-  gaTokenPortalAvailable = !!r?.available;
+  gaTokenPortalAvailable = r?.available !== false;
   syncGaTokenEntry();
 }).catch(() => { syncGaTokenEntry(); });
-function startGaTokenPortalFlow() {
-  showChanToast(t('sys.gaTokenOpen'), 'plan.khrey.com', 'ok');
-  window.ga.getMykeyContent().then(r => {
+async function startGaTokenPortalFlow() {
+  try {
+    const r = await window.ga.getMykeyContent();
     const base = r?.content || '', t0 = Date.now();
-    bridgeFetch('/subscription-portal', { method: 'POST', body: {} });
+    await bridgeFetch('/subscription-portal', { method: 'POST', body: {} });
+    showChanToast(t('sys.gaTokenOpen'), 'plan.khrey.com', 'ok');
     const timer = setInterval(async () => {
       const cur = (await window.ga.getMykeyContent().catch(() => null))?.content;
       if ((cur != null && cur !== base) || Date.now() - t0 > 3e5) { clearInterval(timer); if (cur !== base) await loadModelProfiles(); }
     }, 3000);
-  });
+  } catch (err) {
+    showChanToast(t('err.gaToken'), err.message || String(err), 'err');
+  }
 }
 bindClick('ga-token-btn', (e) => { e.stopPropagation(); startGaTokenPortalFlow(); });
 
