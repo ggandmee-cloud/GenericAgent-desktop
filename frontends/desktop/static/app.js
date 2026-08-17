@@ -1043,13 +1043,16 @@ bindClick('check-update-btn', async (e) => {
     showChanToast(t('err.ota'), err.message || String(err), 'err');
   }
 });
-/* TokenPlan：设置「功能」+ 模型菜单都有入口；插件可用才显示。 */
+/* TokenPlan：设置「功能」+ 模型菜单都有入口；本机插件可用才显示。
+   GET /subscription-portal 会先探测本地导入，再读发布清单（remote）；下载安装另做。 */
 let gaTokenPortalAvailable = false;
+let gaTokenProbe = null;
 const gaTokenBtn = document.getElementById('ga-token-btn');
 function syncGaTokenEntry() {
   if (gaTokenBtn) gaTokenBtn.hidden = !gaTokenPortalAvailable;
 }
 bridgeFetch('/subscription-portal').then(r => {
+  gaTokenProbe = r || null;
   gaTokenPortalAvailable = !!r?.available;
   syncGaTokenEntry();
 }).catch(() => { syncGaTokenEntry(); });

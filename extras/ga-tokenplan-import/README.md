@@ -6,6 +6,14 @@ GenericAgent 桌面版 **开箱即用**：本机 34134 回调，把 TokenPlan �
 
 开源上游没有这份插件。本仓用 `plugins/subscription_portal.py` 薄加载本目录，clone 后设置里就会出现「GA Token」。
 
+桌面端按 GAnet（lsdefine/GenericAgent#768）同款先探测：本机 `from plugins.subscription_portal` 成功才显示入口；同时只读发布清单
+
+```text
+https://plan.khrey.com/releases/plugin/tokenplan/manifest.json
+```
+
+（`GA_TOKENPLAN_PLUGIN_MANIFEST` 可覆盖）。清单字段与 GAnet 插件清单一致：`version` / `url` / `sha256` / `size` / `install_path`。下载安装尚未接入。
+
 ## 别人拿到仓库之后
 
 不用再跑 install。直接启动桌面端。

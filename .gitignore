@@ -153,4 +153,6 @@ frontends/conductor_im_plugins/*
 # 本地 bug / 局限报告草稿（交给维护者参考，不进仓库）
 /BUG_*.md
 
-# TokenPlan 导入已开箱即用：plugins/subscription_portal.py 入库（薄加载 extras/）
+# TokenPlan 导入：plugins/subscription_portal.py 仍入库（薄加载 extras/）。
+# 与 GAnet 相同，后续改为发布服务分发时，下载产物不入库。
+# /plugins/tokenplan/

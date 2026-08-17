@@ -2625,18 +2625,25 @@ async def ota_recycle_handler(request):
 
 
 async def subscription_portal_handler(request):
+    """TokenPlan import: probe local plugin, then the release-server manifest.
+
+    GET  returns {available, installed, remote:{...}} (available = local starter).
+    POST starts the local portal when installed; 404 body still includes the probe
+    so the UI can tell “not installed” from “remote manifest present”.
+    """
     manager.ensure_ga_import_path()
-    try:
-        import agentmain as am
-    except Exception:
-        am = None
-    sp = getattr(am, "start_subscription_portal", None) if am else None
+    import tokenplan_plugin
+    want_remote = request.query.get("remote", "1") not in ("0", "false", "no")
+    result = await asyncio.to_thread(
+        tokenplan_plugin.probe, Path(manager.ga_root), remote=want_remote,
+    )
     if request.method == "GET":
-        return json_ok({"available": bool(sp)})
-    if not sp:
-        return json_ok({"ok": False, "available": False}, status=404)
-    sp()
-    return json_ok({"ok": True})
+        return json_ok(result)
+    starter = tokenplan_plugin.local_starter(Path(manager.ga_root))
+    if not starter:
+        return json_ok({**result, "ok": False}, status=404)
+    starter()
+    return json_ok({**result, "ok": True})
 
 
 def create_app():

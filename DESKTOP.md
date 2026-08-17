@@ -51,3 +51,5 @@ CI：推送标签 `desktop-portable-*` 会打三端并挂到同一个 Release（
 开发启动见 `frontends/desktop/`。macOS 装机说明：`docs/macos_desktop_installation_zh.md`。
 
 换门户 / 邀请码：`GA_TOKENPLAN_URL`、`GA_TOKENPLAN_INVITE`。关掉导入：删 `plugins/subscription_portal.py` 后重启。
+
+TokenPlan 插件按 GAnet 同款「先探测」：设置里的 GA Token 先查本机 `plugins.subscription_portal`，再读发布清单 `https://plan.khrey.com/releases/plugin/tokenplan/manifest.json`（可用 `GA_TOKENPLAN_PLUGIN_MANIFEST` 覆盖）。清单未发布或本机未安装时入口隐藏；下载安装尚未接入。

@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "component": "tokenplan-import-plugin",
+  "version": "0.1.0",
+  "url": "https://plan.khrey.com/releases/plugin/tokenplan-0.1.0.zip",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "size": 0,
+  "install_path": "plugins/subscription_portal.py"
+}
