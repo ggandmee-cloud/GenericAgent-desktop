@@ -993,7 +993,9 @@ async function otaAutoCheckOnLaunch() {
     const s = await bridgeFetch('/ota/status');
     otaPending = s;
     if (!s?.updateAvailable) {
-      const ver = s?.shellCurrent || s?.current || '?';
+      // runtime 优先: 它就是产品版本(对应发布 tag)且恒可知; 旧壳(<0.1.14)不带
+      // GA_SHELL_VERSION, shellCurrent 会是字面量 "unknown"(真值), 放前面必显 vunknown。
+      const ver = s?.current || s?.shellCurrent || '?';
       otaSyncDesc(`${t('sys.otaLatest')} (v${ver})`);
       return;
     }
@@ -1034,8 +1036,8 @@ bindClick('check-update-btn', async (e) => {
       showChanToast(t('sys.otaFound'), otaChannelLabel(s) === 'shell' ? `shell v${s.shellLatest}` : `v${s.latest}`, 'ok');
     } else {
       otaState = 'idle';
-      otaSyncDesc(`${t('sys.otaLatest')} (v${s.shellCurrent || s.current})`);
-      showChanToast(t('sys.otaLatest'), `v${s.shellCurrent || s.current}`, 'ok');
+      otaSyncDesc(`${t('sys.otaLatest')} (v${s.current || s.shellCurrent})`);
+      showChanToast(t('sys.otaLatest'), `v${s.current || s.shellCurrent}`, 'ok');
     }
   } catch (err) {
     otaState = 'idle';
