@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import tarfile
 import tempfile
@@ -17,8 +18,16 @@ import urllib.request
 from pathlib import Path
 
 REPO = os.environ.get("GA_OTA_REPO", "ggandmee-cloud/GenericAgent-desktop")
-# Prefer plan.khrey.com feed (hosted packages); fall back to GitHub Releases.
+# Feeds on plan.khrey.com (hosted packages, CDN-close). The runtime feed is the
+# CI fast lane (mirrored the moment the runtime tarball is built); latest.json
+# follows once every shell build finishes. GitHub Releases is the source of
+# truth and is probed whenever the feeds offer nothing new, so a stale or
+# broken mirror can never pin clients to an old version.
 FEED_URL = os.environ.get("GA_OTA_FEED", "https://plan.khrey.com/desktop/latest.json")
+# Note: under /desktop/files/ on purpose - that is the plan server's wildcard
+# static route, so no server-side route change is needed for this file.
+RUNTIME_FEED_URL = os.environ.get(
+    "GA_OTA_RUNTIME_FEED", "https://plan.khrey.com/desktop/files/runtime-latest.json")
 ASSET = "GenericAgent-runtime.tar.gz"
 TAG_PREFIX = "desktop-portable-"
 # 用户数据/本机状态，覆盖更新永不写入
@@ -74,40 +83,46 @@ def _feed_payload(data: dict) -> dict:
     }
 
 
-def _api_json(url: str):
+def _api_json(url: str, timeout: int = 20):
     headers = dict(_UA)
     if "github.com" not in url:
         headers = {"User-Agent": _UA["User-Agent"], "Accept": "application/json"}
-    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
-def fetch_latest(repo: str = "") -> dict:
-    """Prefer plan.khrey.com desktop feed; else GitHub Releases."""
-    feed = (FEED_URL or "").strip()
-    if feed:
-        try:
-            data = _api_json(feed)
-            out = _feed_payload(data if isinstance(data, dict) else {})
-            if out.get("assetUrl") and out.get("version"):
-                return out
-        except Exception:
-            pass
+def _ver_key(v: str):
+    """'0.1.17' -> comparable tuple; non-numeric parts never beat numeric ones."""
+    return tuple((0, int(p)) if p.isdigit() else (1, p)
+                 for p in re.split(r"[.\-+]", (v or "").strip()) if p != "")
 
-    repo = repo or REPO
-    candidates = []
 
+def _newer(a: str, b: str) -> bool:
+    """True when version a is strictly newer than b (junk never wins)."""
     try:
-        latest = _api_json(f"https://api.github.com/repos/{repo}/releases/latest")
+        return _ver_key(a) > _ver_key(b)
+    except Exception:
+        return False
+
+
+def _github_latest(repo: str = "") -> dict:
+    """Newest desktop-portable release on GitHub that carries the runtime asset."""
+    repo = repo or REPO
+    try:
+        latest = _api_json(f"https://api.github.com/repos/{repo}/releases/latest", timeout=8)
         if (isinstance(latest, dict)
                 and not latest.get("draft")
                 and str(latest.get("tag_name") or "").startswith(TAG_PREFIX)
                 and any(a.get("name") == ASSET for a in latest.get("assets", []))):
             return _release_payload(latest)
     except Exception:
-        latest = None
+        pass
 
-    releases = _api_json(f"https://api.github.com/repos/{repo}/releases?per_page=30")
+    try:
+        releases = _api_json(f"https://api.github.com/repos/{repo}/releases?per_page=30", timeout=8)
+    except Exception:
+        return _release_payload({})
+    candidates = []
     for rel in releases if isinstance(releases, list) else []:
         if rel.get("draft") or not str(rel.get("tag_name") or "").startswith(TAG_PREFIX):
             continue
@@ -122,6 +137,35 @@ def fetch_latest(repo: str = "") -> dict:
     # Prefer entries that have the runtime asset; then newest published_at.
     candidates.sort(key=lambda x: (x[1], x[0]), reverse=True)
     return _release_payload(candidates[0][2])
+
+
+def fetch_latest(repo: str = "", current: str = "") -> dict:
+    """Newest runtime across all sources (see the note next to FEED_URL).
+
+    The feeds are read first (fast, CDN-close). GitHub is consulted only when
+    they offer nothing newer than `current`: the up-to-date check stays fast
+    where GitHub is slow, yet a lagging mirror can never hide a release."""
+    best = _release_payload({})
+    for url in (RUNTIME_FEED_URL, FEED_URL):
+        u = (url or "").strip()
+        if not u:
+            continue
+        try:
+            data = _api_json(u)
+            out = _feed_payload(data if isinstance(data, dict) else {})
+            if (out.get("assetUrl") and out.get("version")
+                    and _newer(out["version"], best.get("version") or "")):
+                best = out
+        except Exception:
+            pass
+
+    if best.get("assetUrl") and current and _newer(best.get("version") or "", current):
+        return best  # the feeds already offer an update: no need to wake GitHub
+
+    gh = _github_latest(repo)
+    if gh.get("assetUrl") and _newer(gh.get("version") or "", best.get("version") or ""):
+        return gh
+    return best if best.get("assetUrl") else gh
 
 
 def _is_protected(rel: str) -> bool:
@@ -198,8 +242,11 @@ def apply_tarball(tar_path: Path, root: Path, version: str) -> dict:
 
 def check(root: Path) -> dict:
     cur = current_version(root)
-    latest = fetch_latest()
-    available = bool(latest["assetUrl"]) and latest["version"] not in ("", cur)
+    latest = fetch_latest(current=cur)
+    # Strictly newer only: a lagging feed must not offer a downgrade to a
+    # machine that is already ahead of the mirrors.
+    available = bool(latest["assetUrl"]) and bool(latest["version"]) and (
+        cur in ("", "unknown") or _newer(latest["version"], cur))
     return {
         "ok": True, "current": cur, "latest": latest["version"], "tag": latest["tag"],
         "updateAvailable": available, "assetSize": latest["assetSize"],
@@ -210,10 +257,10 @@ def check(root: Path) -> dict:
 def apply(root: Path) -> dict:
     root = Path(root)
     cur = current_version(root)
-    latest = fetch_latest()
+    latest = fetch_latest(current=cur)
     if not latest["assetUrl"]:
         raise ValueError("no runtime asset in the latest release")
-    if latest["version"] == cur:
+    if cur not in ("", "unknown") and not _newer(latest["version"], cur):
         return {"ok": True, "current": cur, "upToDate": True}
     fd, name = tempfile.mkstemp(prefix="ga-ota-", suffix=".tar.gz")
     os.close(fd)

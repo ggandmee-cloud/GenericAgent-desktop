@@ -14,13 +14,27 @@
 #   PLAN_KHREY_CHOWN      — default agentga:agentga (empty = skip)
 #
 # Usage:
-#   sync_plan_khrey_desktop.sh <tag> [--dry-run]
+#   sync_plan_khrey_desktop.sh <tag> [--runtime-only] [--dry-run]
+#
+# --runtime-only is the CI fast lane: it needs only the (platform-neutral)
+# runtime tarball, so it runs as soon as the Linux job uploads it and writes
+# runtime-latest.json - runtime OTA never waits for, nor gets blocked by, the
+# Windows/macOS shell builds. latest.json (installers, plugin, shell OTA) is
+# untouched here and still comes from the full mirror afterwards.
 set -euo pipefail
 
 TAG="${1:-}"
 DRY=0
-[[ "${2:-}" == "--dry-run" ]] && DRY=1
-[[ -n "$TAG" ]] || { echo "usage: $0 <tag> [--dry-run]" >&2; exit 2; }
+RUNTIME_ONLY=0
+shift || true
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY=1 ;;
+    --runtime-only) RUNTIME_ONLY=1 ;;
+    *) echo "unknown flag: $arg" >&2; exit 2 ;;
+  esac
+done
+[[ -n "$TAG" ]] || { echo "usage: $0 <tag> [--runtime-only] [--dry-run]" >&2; exit 2; }
 
 REPO="${PLAN_KHREY_REPO:-ggandmee-cloud/GenericAgent-desktop}"
 HOST="${PLAN_KHREY_SSH_HOST:?PLAN_KHREY_SSH_HOST required}"
@@ -32,12 +46,16 @@ PUBLIC_BASE="${PLAN_KHREY_PUBLIC_BASE:-https://plan.khrey.com/desktop/files}"
 PUBLIC_BASE="${PUBLIC_BASE%/}"
 CHOWN_TO="${PLAN_KHREY_CHOWN:-agentga:agentga}"
 
-REQUIRED=(
-  GenericAgent-Desktop-Windows-Portable.zip
-  GenericAgent-Desktop-macOS.dmg
-  GenericAgent-Desktop-Linux-Portable.tar.gz
-  GenericAgent-runtime.tar.gz
-)
+if [[ "$RUNTIME_ONLY" -eq 1 ]]; then
+  REQUIRED=(GenericAgent-runtime.tar.gz)
+else
+  REQUIRED=(
+    GenericAgent-Desktop-Windows-Portable.zip
+    GenericAgent-Desktop-macOS.dmg
+    GenericAgent-Desktop-Linux-Portable.tar.gz
+    GenericAgent-runtime.tar.gz
+  )
+fi
 
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/ga-plan-khrey.XXXXXX")"
 cleanup() { rm -rf "$WORKDIR"; }
@@ -103,6 +121,69 @@ mkdir -p "$WORKDIR/files"
 for f in "${REQUIRED[@]}"; do
   [[ -f "$WORKDIR/files/$f" ]] || { echo "download failed: $f" >&2; exit 1; }
 done
+
+if [[ "$RUNTIME_ONLY" -eq 1 ]]; then
+  echo "==> build runtime-latest.json"
+  python3 - "$WORKDIR" "$TAG" "$PUBLIC_BASE" "$META_JSON" <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+
+work, tag, base, meta_path = Path(sys.argv[1]), sys.argv[2], sys.argv[3].rstrip("/"), Path(sys.argv[4])
+meta = json.loads(meta_path.read_text(encoding="utf-8"))
+name = "GenericAgent-runtime.tar.gz"
+p = work / "files" / name
+ver = tag[len("desktop-portable-"):] if tag.startswith("desktop-portable-") else tag
+body = (meta.get("body") or "").strip()
+lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+out = {
+    "version": ver,
+    "tag": tag,
+    "publishedAt": meta.get("publishedAt") or "",
+    "notes": (lines[0][:240] if lines else f"GenericAgent Desktop {ver}"),
+    "runtime": {
+        "name": name,
+        "url": f"{base}/{name}",
+        "size": p.stat().st_size,
+        "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+    },
+}
+(work / "runtime-latest.json").write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+print(json.dumps({"version": ver, "runtime_sha": out["runtime"]["sha256"][:16]}))
+PY
+
+  if [[ "$DRY" -eq 1 ]]; then
+    echo "==> dry-run (runtime-only): would rsync to ${USER}@${HOST}:${REMOTE_DIR}/"
+    ls -lh "$WORKDIR/files/GenericAgent-runtime.tar.gz"
+    cat "$WORKDIR/runtime-latest.json"
+    exit 0
+  fi
+
+  echo "==> rsync runtime → ${USER}@${HOST}:${REMOTE_DIR}/"
+  "${SSH[@]}" "${USER}@${HOST}" "mkdir -p '$REMOTE_DIR'"
+  # Tarball (and sidecar) land first; the feed pointer goes last so a reader
+  # can never see a runtime-latest.json whose payload is still uploading.
+  rsync -av --checksum -e "$RSYNC_SSH" \
+    "$WORKDIR/files/GenericAgent-runtime.tar.gz" \
+    "${USER}@${HOST}:${REMOTE_DIR}/"
+  if [[ -f "$WORKDIR/files/GenericAgent-runtime.tar.gz.sha256" ]]; then
+    rsync -av -e "$RSYNC_SSH" \
+      "$WORKDIR/files/GenericAgent-runtime.tar.gz.sha256" \
+      "${USER}@${HOST}:${REMOTE_DIR}/"
+  fi
+  rsync -av --checksum -e "$RSYNC_SSH" \
+    "$WORKDIR/runtime-latest.json" \
+    "${USER}@${HOST}:${REMOTE_DIR}/"
+
+  if [[ -n "$CHOWN_TO" ]]; then
+    "${SSH[@]}" "${USER}@${HOST}" "chown -R '$CHOWN_TO' '$REMOTE_DIR' && chmod 755 '$REMOTE_DIR' && chmod 644 '$REMOTE_DIR'/*"
+  fi
+
+  echo "==> verify public runtime feed"
+  # Served via the /desktop/files/ wildcard route: no plan-server route change needed.
+  curl -fsS "${PUBLIC_BASE}/runtime-latest.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["version"], d["tag"], d["runtime"]["sha256"][:16])'
+  echo "OK fast-lane mirrored $TAG runtime → plan.khrey.com/desktop/"
+  exit 0
+fi
 
 echo "==> pack TokenPlan plugin"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -209,5 +290,14 @@ fi
 
 echo "==> verify public feed"
 curl -fsS "${PUBLIC_BASE%/files}/latest.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d.get("plugin") or {}; print(d["version"], d["tag"], d["runtime"]["sha256"][:16], p.get("version"), str(p.get("sha256") or "")[:16])'
-curl -fsS "${PUBLIC_BASE%/files}/plugin-manifest.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("plugin", d["version"], d["sha256"][:16], d["url"])'
+# plugin-manifest.json: the top-level path is a dedicated route in the plan
+# server's Go router and has regressed to 404 before while the uploaded file
+# itself served fine under /files/. The mirror's deliverable is the upload -
+# verify loudly, but never let a server routing regression paint the whole
+# release red after everything already synced.
+if ! curl -fsS "${PUBLIC_BASE%/files}/plugin-manifest.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("plugin", d["version"], d["sha256"][:16], d["url"])'; then
+  echo "WARN: ${PUBLIC_BASE%/files}/plugin-manifest.json not served (plan server route regression?)"
+  curl -fsS "${PUBLIC_BASE}/plugin-manifest.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("plugin (files/ fallback)", d["version"], d["sha256"][:16], d["url"])' \
+    || echo "WARN: files/plugin-manifest.json also unreachable - check the upload"
+fi
 echo "OK mirrored $TAG → plan.khrey.com/desktop/"

@@ -5597,6 +5597,8 @@ window.ga.onBridgeReady(async () => {
   if (sess) refreshEmptyState(sess);
   /* §AN: 桥就绪后自动查 OTA；有更新则 required 弹窗（不挡首屏其它就绪路径） */
   otaAutoCheckOnLaunch();
+  /* 常开不重启的桌面也要等得到包: 每 12h 复查一次(整个生命周期至多弹一次, 见 otaAutoPrompted) */
+  setInterval(() => { Promise.resolve(otaAutoCheckOnLaunch()).catch(() => {}); }, 12 * 3600 * 1000);
 });
 setTimeout(() => { delete document.documentElement.dataset.bootHasSessions; }, 3000);
 window.ga.onBridgeNotification((msg) => {

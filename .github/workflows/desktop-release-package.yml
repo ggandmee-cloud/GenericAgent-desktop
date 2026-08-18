@@ -814,3 +814,39 @@ jobs:
           export PLAN_KHREY_DESKTOP_DIR="${PLAN_KHREY_DESKTOP_DIR:-/opt/tokenplan/data/desktop}"
           export PLAN_KHREY_PUBLIC_BASE="${PLAN_KHREY_PUBLIC_BASE:-https://plan.khrey.com/desktop/files}"
           bash frontends/desktop/packaging/scripts/sync_plan_khrey_desktop.sh "${{ github.ref_name }}"
+
+  # ----------------------------------------------------------------------------
+  # Fast lane: the runtime tarball is platform-neutral and ready as soon as the
+  # Linux job uploads it. Mirror it plus runtime-latest.json immediately, so
+  # runtime OTA neither waits for the slower shell builds nor gets blocked when
+  # one of them fails. latest.json (installers / plugin / shell OTA) still
+  # comes from the full mirror above.
+  publish-runtime-feed:
+    name: Fast-lane runtime feed to plan.khrey.com
+    if: ${{ startsWith(github.ref, 'refs/tags/desktop-portable-') }}
+    needs: [build-linux]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Mirror runtime + runtime-latest.json to plan.khrey.com
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLAN_KHREY_SSH_HOST: ${{ secrets.PLAN_KHREY_SSH_HOST }}
+          PLAN_KHREY_SSH_USER: ${{ secrets.PLAN_KHREY_SSH_USER }}
+          PLAN_KHREY_SSH_KEY: ${{ secrets.PLAN_KHREY_SSH_KEY }}
+          PLAN_KHREY_SSH_PORT: ${{ secrets.PLAN_KHREY_SSH_PORT }}
+          PLAN_KHREY_DESKTOP_DIR: ${{ secrets.PLAN_KHREY_DESKTOP_DIR }}
+          PLAN_KHREY_PUBLIC_BASE: ${{ secrets.PLAN_KHREY_PUBLIC_BASE }}
+          PLAN_KHREY_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          : "${PLAN_KHREY_SSH_HOST:?set secret PLAN_KHREY_SSH_HOST}"
+          : "${PLAN_KHREY_SSH_USER:?set secret PLAN_KHREY_SSH_USER}"
+          : "${PLAN_KHREY_SSH_KEY:?set secret PLAN_KHREY_SSH_KEY}"
+          # Empty optional secrets become "" — script defaults apply.
+          export PLAN_KHREY_SSH_PORT="${PLAN_KHREY_SSH_PORT:-22}"
+          export PLAN_KHREY_DESKTOP_DIR="${PLAN_KHREY_DESKTOP_DIR:-/opt/tokenplan/data/desktop}"
+          export PLAN_KHREY_PUBLIC_BASE="${PLAN_KHREY_PUBLIC_BASE:-https://plan.khrey.com/desktop/files}"
+          bash frontends/desktop/packaging/scripts/sync_plan_khrey_desktop.sh "${{ github.ref_name }}" --runtime-only
