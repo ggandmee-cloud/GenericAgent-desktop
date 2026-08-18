@@ -1100,37 +1100,91 @@ hub = WsHub()
 # ---------------------------------------------------------------------------
 
 def _wire_ga_hub(mgr: AgentManager):
-    """Register this bridge on the GA hub as fixed peer 'desktop' (stapp parity).
+    """Register every desktop session as its own fixed hub peer (`d.<sid>`).
 
-    The hub speaks one linear task list per peer, so the desktop's face is the
-    session the user most plausibly cares about: the newest *running* one, else
-    the most recently updated. Mapping: hub task = one user turn; its steps are
-    the paired assistant message's turn_segs (taken live from sess.partial while
+    The hub speaks one linear task list per peer. The old wiring flattened the
+    multi-session desktop into a single 'desktop' face (newest running session
+    wins), so a phone saw one conversation and busy meant "the whole desktop".
+    Now each session carries a dedicated HubClient whose hooks close over its
+    sid: the phone lists every drawer by its real title, reads any of them, and
+    put/abort/busy are judged per target session - a second conversation can be
+    fed while the first is still running (desktop concurrency already exists,
+    submit_prompt only gates on its own session).
+
+    Mapping per peer is unchanged: hub task = one user turn; its steps are the
+    paired assistant message's turn_segs (taken live from sess.partial while
     the turn runs, so a phone can tail step bodies mid-flight).
 
-    put -> submit into that session through the same entrance as a typed prompt
-    (running -> hub 'busy' per contract: a remote must not cut in line; no
-    session at all -> create one, so a phone can kick off an empty desktop).
+    Lifecycle: a reconciler thread mirrors mgr.sessions into live clients (new
+    or reactivated sessions join the bus, deleted ones leave - the hub drops a
+    peer row when its WS closes). Capped to the most recently updated
+    GA_HUB_MAX_SESSION_PEERS (default 24, running sessions always kept) so a
+    hundred drawers do not become a hundred sockets; an old session touched
+    again bumps back into the window on the next sweep.
     Never raises: the hub is optional and must not disturb its host."""
     try:
         if str(APP_DIR) not in sys.path:
             sys.path.insert(0, str(APP_DIR))
         import hub as ga_hub  # sibling frontends/hub.py; bare name is taken by WsHub above
 
-        def _target() -> Optional[Session]:
-            with mgr.lock:
-                ss = list(mgr.sessions.values())
-            pool = [s for s in ss if s.status == "running"] or ss
-            return max(pool, key=lambda s: s.updated_at) if pool else None
+        class _SessClient(ga_hub.HubClient):
+            """Stock HubClient reconnects forever; a deleted/evicted session must
+            take its peer off the bus for good, so add a stop switch. _loop is a
+            copy of HubClient._loop plus the stop checks."""
+            def __init__(self, *a, **kw):
+                super().__init__(*a, **kw)
+                self._stopped = False
 
-        def _tasks() -> list:
-            s = _target()
-            if not s:
-                return []
+            def stop(self):
+                self._stopped = True
+                ws, lp = self._ws, self._lp
+                if ws is not None and lp is not None:
+                    try:
+                        asyncio.run_coroutine_threadsafe(ws.close(), lp)
+                    except Exception:
+                        pass
+
+            async def _loop(self):
+                try:
+                    import websockets
+                except ImportError:
+                    return
+                while not self._stopped:
+                    try:
+                        async with websockets.connect(ga_hub.URL, open_timeout=3, max_size=None) as ws:
+                            self._ws, self._lp = ws, asyncio.get_running_loop()
+                            caps = [k for k, v in (('get', self.get_outputs), ('put', self.put_task),
+                                                   ('abort', self.abort)) if v]
+                            await ws.send(json.dumps({'op': 'hello', 'name': self.name, 'pid': os.getpid(),
+                                                      'fixed': self.fixed, 'caps': caps, 'sub': self.sub}))
+                            async for raw in ws:
+                                if self._stopped:
+                                    break
+                                await self._on_cmd(ws, json.loads(raw))
+                    except Exception:
+                        pass
+                    self._ws = None
+                    if not self._stopped:
+                        await asyncio.sleep(5)
+
+        # sid -> (key, tasks): /api/peers polls every session peer, so an idle
+        # session must answer from cache instead of re-copying its whole history
+        # each round. Key = anything that moves when the task list would.
+        _tcache: Dict[str, tuple] = {}
+
+        def _tasks(sid: str) -> list:
             with mgr.lock:
+                s = mgr.sessions.get(sid)
+                if not s:
+                    _tcache.pop(sid, None)
+                    return []
+                segs = (s.partial or {}).get("turn_segs") or []
+                key = (s.msg_seq, s.status, len(segs), len(segs[-1] or '') if segs else 0)
+                hit = _tcache.get(sid)
+                if hit and hit[0] == key:
+                    return hit[1]
                 msgs = [dict(m) for m in s.messages]
-                live = (list((s.partial or {}).get("turn_segs") or [])
-                        if s.status == "running" else [])
+                live = list(segs) if s.status == "running" else []
             tasks: list = []
             for m in msgs:
                 role = m.get("role")
@@ -1154,36 +1208,133 @@ def _wire_ga_hub(mgr: AgentManager):
                     out[-1] = t
                 else:
                     out.append(t)
+            _tcache[sid] = (key, out)
             return out
 
-        def _put(text: str):
-            s = _target()
-            if s is not None and s.status == "running":
-                return {"error": "desktop is busy", "code": "busy"}
+        def _put(sid: str, text: str):
             try:
-                sid = s.id if s is not None else mgr.create_session().id
-                mgr.submit_prompt(sid, text)
+                mgr.submit_prompt(sid, text)  # same entrance as a typed prompt
+            except web.HTTPNotFound:
+                return {"error": "session gone", "code": "gone"}
             except web.HTTPConflict:
-                return {"error": "desktop is busy", "code": "busy"}
+                return {"error": "session is busy", "code": "busy"}
             except Exception as e:
                 return {"error": str(e) or type(e).__name__, "code": "badop"}
 
-        def _abort():
-            s = _target()
-            if s is not None and s.status == "running":
-                mgr.cancel(s.id)  # abort what the phone is looking at, nothing else
-
-        def _state() -> dict:
+        def _abort(sid: str):
             with mgr.lock:
-                return {"run": any(s.status == "running" for s in mgr.sessions.values())}
+                s = mgr.sessions.get(sid)
+                running = bool(s and s.status == "running")
+            if running:
+                mgr.cancel(sid)  # abort this session only, nothing else
+
+        def _state(sid: str) -> dict:
+            with mgr.lock:
+                s = mgr.sessions.get(sid)
+                run = bool(s and s.status == "running")
+                # HubClient._build merges state() last, so a real desktop title
+                # overrides the input-derived one; untitled sessions keep that.
+                title = "" if (s is None or s.untitled) else (s.title or "").strip()
+            d = {"run": run}
+            if title:
+                d["title"] = title[:80]
+            return d
+
+        def _make(sid: str) -> _SessClient:
+            name = "d." + (sid[5:] if sid.startswith("sess-") else sid)
+            return _SessClient(name,
+                               put_task=lambda text, sid=sid: _put(sid, text),
+                               get_outputs=lambda sid=sid: _tasks(sid),
+                               abort=lambda sid=sid: _abort(sid),
+                               state=lambda sid=sid: _state(sid), fixed=True)
+
+        # --- "new chat" entrance: lets a phone start a fresh desktop session ---
+        # One permanent extra peer 'd.new'. Unbound it faces the phone as an
+        # empty conversation titled ＋新建会话; a put creates a real session
+        # (same entrance as the desktop's own new-chat) and binds to it, so the
+        # reply and follow-ups flow in place. The binding is forgotten once
+        # nobody has *viewed* d.new for NEW_HOLD seconds - viewing means
+        # detail-1 gets / seg reads, the peers-list detail-0 poll doesn't count
+        # - so the next visit is a blank sheet again. The created session lives
+        # on as its own d.<sid> peer either way (never while it is running:
+        # a long first turn must not be orphaned mid-flight).
+        NEW_HOLD = 300.0
+        nb = {"sid": None, "seen": 0.0}
+
+        def _nb_cur():
+            sid = nb["sid"]
+            if not sid:
+                return None
+            with mgr.lock:
+                s = mgr.sessions.get(sid)
+            if s is None or (s.status != "running" and time.time() - nb["seen"] > NEW_HOLD):
+                nb["sid"] = None
+                return None
+            return sid
+
+        class _NewClient(_SessClient):
+            """d.new must know when it is being *looked at*, which only the raw
+            command dict reveals; hooks receive no arguments."""
+            def _build(self, c):
+                if int(c.get("detail", 1)) == 1:
+                    nb["seen"] = time.time()
+                return super()._build(c)
+
+            def _seg(self, c):
+                nb["seen"] = time.time()
+                return super()._seg(c)
+
+        def _nput(text: str):
+            sid = _nb_cur()
+            if sid is None:
+                try:
+                    sid = mgr.create_session().id
+                except Exception as e:
+                    return {"error": str(e) or type(e).__name__, "code": "badop"}
+                nb["sid"], nb["seen"] = sid, time.time()
+            return _put(sid, text)
+
+        def _ntasks() -> list:
+            sid = _nb_cur()
+            return _tasks(sid) if sid else []
+
+        def _nabort():
+            sid = _nb_cur()
+            if sid:
+                _abort(sid)
+
+        def _nstate() -> dict:
+            sid = _nb_cur()
+            return _state(sid) if sid else {"run": False, "title": "＋ 新建会话"}
+
+        clients: Dict[str, _SessClient] = {}
+        cap = max(1, int(os.environ.get("GA_HUB_MAX_SESSION_PEERS", "24")))
+
+        def _reconcile_forever():
+            while True:
+                try:
+                    with mgr.lock:
+                        ss = list(mgr.sessions.values())
+                    ss.sort(key=lambda s: (s.status == "running", s.updated_at), reverse=True)
+                    want = {s.id for s in ss[:cap]}
+                    for sid in [k for k in clients if k not in want]:
+                        clients.pop(sid).stop()
+                        _tcache.pop(sid, None)
+                    for sid in [k for k in want if k not in clients]:
+                        clients[sid] = _make(sid)
+                        clients[sid].start()
+                except Exception:
+                    pass
+                time.sleep(3)
 
         try:
             ga_hub.serve()  # best effort: bring up a local hub if none listens (port is the lock)
         except Exception:
             pass
-        ga_hub.HubClient("desktop", put_task=_put, get_outputs=_tasks, abort=_abort,
-                         state=_state, fixed=True).start()
-        print("[bridge] ga-hub peer 'desktop' wiring up", file=sys.stderr)
+        _NewClient("d.new", put_task=_nput, get_outputs=_ntasks,
+                   abort=_nabort, state=_nstate, fixed=True).start()
+        threading.Thread(target=_reconcile_forever, daemon=True, name="ga-hub-sessions").start()
+        print("[bridge] ga-hub per-session peers wiring up", file=sys.stderr)
     except Exception as e:
         print(f"[bridge] ga-hub link skipped: {e}", file=sys.stderr)
 
