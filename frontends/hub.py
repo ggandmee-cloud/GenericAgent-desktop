@@ -176,10 +176,11 @@ if __name__ == '__main__':
             if 'get' not in caps: rows.append({'name': n, 'title': '', 'n_msgs': 0, 'sig': None, 'caps': caps}); continue
             if r is None or r.get('error') or (r.get('same') and n in pcache):   # busy/skipped/idle -> last row
                 rows.append({**(pcache.get(n) or {'name': n, 'title': '?', 'n_msgs': 0, 'sig': None}),
-                             'caps': caps, 'run': (r or {}).get('run')}); continue
+                             'caps': caps, 'run': (r or {}).get('run'),
+                             'ts': (r or {}).get('ts') or (pcache.get(n) or {}).get('ts') or 0}); continue
             msgs = sum(1 for t in r.get('tasks', []) if not (t.get('input') or '').lstrip().startswith('/'))
             rows.append({'name': n, 'title': r.get('title', '?'), 'n_msgs': msgs, 'sig': r.get('sig'),
-                         'caps': caps, 'run': r.get('run')})
+                         'caps': caps, 'run': r.get('run'), 'ts': r.get('ts') or 0})
             if r.get('sig'): pcache[n] = rows[-1]
         for n in [x for x in pcache if x not in peers]: pcache.pop(n, None)
         if psig is None: return rows

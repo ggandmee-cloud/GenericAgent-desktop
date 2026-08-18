@@ -1235,7 +1235,10 @@ def _wire_ga_hub(mgr: AgentManager):
                 # HubClient._build merges state() last, so a real desktop title
                 # overrides the input-derived one; untitled sessions keep that.
                 title = "" if (s is None or s.untitled) else (s.title or "").strip()
-            d = {"run": run}
+                ts = float(s.updated_at) if s else 0.0
+            # ts rides through hub /api/peers so the phone can list sessions
+            # newest-first (hub row order is connect order, which goes stale).
+            d = {"run": run, "ts": ts}
             if title:
                 d["title"] = title[:80]
             return d
