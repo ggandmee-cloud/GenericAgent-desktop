@@ -2473,13 +2473,15 @@ async def _hub_pair_ready(base: str, *, fresh: bool = False) -> dict:
     async with aiohttp.ClientSession(timeout=timeout) as sess:
         async with sess.get(pair) as r:
             await r.read()
-        # fresh create_code 可能要 1–2s 才写出 invite.code；已连接则没有 code
+        # fresh create_code 可能要 1–2s 才写出 invite.code；已连接则没有 code。
+        # paired(已存房间)也立即返回: 等重连的 hub 永远不出码, 白等 5s 只为超时。
         data = {}
         for _ in range(15):
             async with sess.get(f"{base}/pair/status") as r:
                 data = await r.json(content_type=None)
             if isinstance(data, dict) and (
                 data.get("code") or data.get("status") == "connected"
+                or data.get("paired")
             ):
                 return data
             await asyncio.sleep(0.35)
@@ -2514,10 +2516,15 @@ async def pclink_pair_info_handler(request):
                     "pairUrl": pair_url,
                     "statusUrl": status_url,
                 })
-        # 已连接不要拆线重发码（否则手机反复重连、桌面一直冒「已连接」）
-        if want_fresh or (st.get("status") != "connected" and not st.get("code")):
+        # 已连接不要拆线重发码（否则手机反复重连、桌面一直冒「已连接」）。
+        # 已配对(paired)同样不许自动 fresh: 升级重启/手机熄屏时打开本弹窗, 手机只是暂时
+        # 不在线, fresh 会清掉唯一的配对房间 → 手机永远重连不上, 表现为「一升级就得重扫」。
+        # 兜底 fresh 只留给「从未配对且确实出不了码」; 显式换绑走「重新配对」按钮(want_fresh)。
+        if want_fresh or (not st.get("paired")
+                          and st.get("status") != "connected" and not st.get("code")):
             st = await _hub_pair_ready(base, fresh=True)
-        if st.get("status") != "connected" and not st.get("code"):
+        if (st.get("status") != "connected" and not st.get("code")
+                and not st.get("paired")):
             return json_ok({
                 "ok": False,
                 "error": st.get("error") or "配对码生成中，请稍后再试",
@@ -2540,6 +2547,7 @@ async def pclink_pair_info_handler(request):
         "pairUrl": pair_url,
         "statusUrl": status_url,
         "status": st.get("status"),
+        "paired": st.get("paired"),
         "code": st.get("code"),
         "qr_payload": st.get("qr_payload"),
     })

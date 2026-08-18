@@ -131,8 +131,16 @@ def install(app, *, web_port, token, here):
         _ensure_pair_task()
         invite = state["invite"]
         code = getattr(invite, "code", None)
+        # paired = 本机存有配对房间(手机可能只是暂时不在线)。桥/UI 据此区分
+        # 「从未配对→出码」与「已配对→等重连」——后者绝不能自动 fresh 拆房间。
+        try:
+            load_room(name, path=rooms)
+            paired = True
+        except Exception:
+            paired = False
         return JSONResponse({
             "status": state["status"],
+            "paired": paired,
             "code": code,
             "qr_payload": (QR_PREFIX + str(code)) if code else None,
             "expires_at": getattr(invite, "expires_at", None),

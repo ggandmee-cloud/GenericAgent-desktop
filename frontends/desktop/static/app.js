@@ -1081,6 +1081,13 @@ function stopPcLinkPoll() {
 }
 function pcLinkStatusText(s) {
   const st = String(s?.status || '');
+  // 已配对但手机暂未上线（升级重启/熄屏后常态）：如实说「等手机」，
+  // 而不是「正在重连」+ 一个假的「—」码。想换绑走「重新配对」按钮。
+  if (s?.paired && st !== 'connected' && !s?.qr_payload) {
+    let m = t('sys.pcLinkPairedWait');
+    if (s?.error) m += ' · ' + s.error;
+    return m;
+  }
   const key = {
     connected: 'sys.pcLinkConnected',
     waiting: 'sys.pcLinkWaiting',
@@ -1098,7 +1105,8 @@ function paintPcLinkStatus(s) {
   const canvas = document.getElementById('pclink-qr');
   const wrap = document.getElementById('pclink-qr-wrap');
   const connected = s?.status === 'connected';
-  if (codeEl) codeEl.textContent = connected ? '' : (s?.code || '—');
+  const pairedWait = !connected && !!s?.paired && !s?.qr_payload;
+  if (codeEl) codeEl.textContent = (connected || pairedWait) ? '' : (s?.code || '—');
   if (stEl) stEl.textContent = pcLinkStatusText(s);
   if (wrap) wrap.hidden = !s?.qr_payload || connected;
   if (canvas && s?.qr_payload && !connected && window.QR?.renderCanvas) {
