@@ -143,7 +143,7 @@
     'chat.interrupting': '正在停止上一轮…',
     'chat.sessionLoading': '正在加载会话…',
     'sys.stopRequested': '已请求停止',
-    'slash.help': '可用命令：\n/new 新会话  /clear 清屏  /stop 停止  /settings 设置',
+    'slash.help': '可用命令：\n/new 新会话  /clear 清屏  /stop 停止  /settings 设置\n快捷键（mac ⌘ / 其它 Ctrl）：N 新对话 · K 搜索 · B 侧栏 · , 设置 · . 停止 · ⇧[ / ⇧] 切换会话',
     'slash.unknown': '未知命令',
     'upload.hint': '上传文件：选择 / 拖拽 / 粘贴',
     'upload.button': '上传文件',
@@ -396,7 +396,7 @@
     'chat.interrupting': 'Stopping previous reply…',
     'chat.sessionLoading': 'Loading conversation…',
     'sys.stopRequested': 'Stop requested',
-    'slash.help': 'Commands:\n/new new chat  /clear clear  /stop stop  /settings settings',
+    'slash.help': 'Commands:\n/new new chat  /clear clear  /stop stop  /settings settings\nShortcuts (⌘ on mac / Ctrl elsewhere): N new chat · K search · B sidebar · , settings · . stop · ⇧[ / ⇧] switch chat',
     'slash.unknown': 'Unknown command',
     'upload.hint': 'Upload file: pick / drag / paste',
     'upload.button': 'Upload file',
@@ -608,8 +608,10 @@
       el.setAttribute('placeholder', tFor(lang, el.dataset.i18nPlaceholder));
     });
     scope.querySelectorAll('[data-i18n-title]').forEach(el => {
-      el.setAttribute('title', tFor(lang, el.dataset.i18nTitle));
-      el.setAttribute('aria-label', tFor(lang, el.dataset.i18nTitle));
+      const base = tFor(lang, el.dataset.i18nTitle);
+      // data-kbd = 快捷键提示（app.js U4 块按平台写入）：title 续尾、aria-label 保持纯文案
+      el.setAttribute('title', el.dataset.kbd ? `${base} (${el.dataset.kbd})` : base);
+      el.setAttribute('aria-label', base);
     });
   }
 

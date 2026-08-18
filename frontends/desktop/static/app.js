@@ -3868,14 +3868,33 @@ newConvBtn.addEventListener('click', (e) => {
   gaGoPage('chat');
   openDraftChat();
 });
-/* U4: 全局快捷键（UX_SPEC §5）——⌘K/Ctrl+K 聚焦搜索、⌘N/Ctrl+N 新对话；
-   IME 组合期间忽略；不占用 Shift/Alt 组合；Esc 单独绑在搜索框（见下），不进全局 Esc 链 */
+/* U4: 全局快捷键（UX_SPEC §5）——⌘K/Ctrl+K 聚焦搜索、⌘N/Ctrl+N 新对话、⌘B 侧栏开合、
+   ⌘, 设置、⌘. 停止生成、⌘⇧[/⌘⇧] 上/下一个会话（浏览器标签页同型词汇）；
+   IME 组合期间忽略；Esc 单独绑在搜索框（见下），不进全局 Esc 链 */
+function switchConvBy(dir) {
+  // 以侧栏渲染序为准（尊重当前搜索过滤/置顶序）；.click() 走行点击原路径
+  // （setActiveSession + gaGoPage('chat')，改名态行已被 :not 滤掉），首尾环绕。
+  const rows = [...convListEl.querySelectorAll('.conv-item:not(.renaming)')];
+  if (!rows.length) return;
+  const cur = rows.findIndex(r => r.dataset.id === state.activeId);
+  const next = cur < 0 ? (dir > 0 ? rows[0] : rows[rows.length - 1])
+                       : rows[(cur + dir + rows.length) % rows.length];
+  next?.click();
+}
 document.addEventListener('keydown', (e) => {
   if (e.isComposing || e.repeat) return;  // GU4-S2: 长按防连发（§AA 后 ⌘N 只切草稿窗, 守卫保留）
   // GU4-S1: 平台二选一——mac 只认 ⌘（不占 Ctrl+K 的 kill-line），其余平台只认 Ctrl
   const isMac = /mac/i.test(navigator.platform);
   const mod = isMac ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey);
-  if (!mod || e.altKey || e.shiftKey) return;
+  if (!mod || e.altKey) return;
+  if (e.shiftKey) {
+    // 唯一的 Shift 组合：会话切换。用 e.code 免键盘布局歧义（shift+[ 在 e.key 是 '{'）
+    if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+      e.preventDefault();
+      switchConvBy(e.code === 'BracketLeft' ? -1 : 1);
+    }
+    return;
+  }
   const k = (e.key || '').toLowerCase();
   if (k === 'k') {
     e.preventDefault();
@@ -3884,6 +3903,15 @@ document.addEventListener('keydown', (e) => {
   } else if (k === 'n') {
     e.preventDefault();
     newConvBtn?.click();
+  } else if (k === 'b') {
+    e.preventDefault();
+    bodyEl.classList.toggle('sb-collapsed');
+  } else if (k === ',') {
+    e.preventDefault();  // mac 标准设置键；win/linux 沿 VSCode 惯例
+    openSettings();
+  } else if (k === '.') {
+    e.preventDefault();  // mac 标准「取消」键；不在忙时静默跳过（cancelPrompt 自判）
+    cancelPrompt().then(ok => { if (ok) showChanToast(t('sys.stopRequested'), '', 'ok'); }).catch(() => {});
   }
 });
 // U4: 搜索框 Esc——有词清空并刷新，无词失焦；不冒泡到全局 Esc（modal/菜单各自处理）
@@ -3902,6 +3930,17 @@ if (searchInput) searchInput.addEventListener('keydown', (e) => {
   const modKey = /mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
   newConvBtn?.setAttribute('data-tooltip', `${modKey}N`);
   searchInput?.closest('.search')?.setAttribute('data-tooltip', `${modKey}K`);
+  // sb-toggle/sb-settings 的 title 由 applyI18n 按 data-i18n-title 重写：
+  // 快捷键挂 data-kbd（i18n 的 title 处理器识别并续尾），这里再补写一次当前 title
+  // 覆盖「本块晚于首次 applyI18n 运行」的空窗。
+  const kbd = (id, keys) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.dataset.kbd = keys;
+    if (el.hasAttribute('title')) el.setAttribute('title', `${el.getAttribute('title')} (${keys})`);
+  };
+  kbd('sb-toggle', `${modKey}B`);
+  kbd('sb-settings', `${modKey},`);
 }
 
 /* ═══════════════ 轮询 + 流式 ═══════════════ */
