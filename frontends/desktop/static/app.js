@@ -1667,6 +1667,20 @@ function renderTurnBody(body, mode) {
     return div;
   });
   let html = renderMarkdown(s);
+  /* 占位符是块级件（<details>/ask 卡）的替身，不能留在 <p> 里：innerHTML 落 DOM 时浏览器在 <p> 内
+     遇到块级标签会强拆段落，每个折叠留下一对空 <p></p> 边角料（多工具轮 = 成片空行，2026-08-31 实锤
+     16 个空段 ≈300px 空白）。还原前先在 <p> 作用域内把占位符剥出为块级兄弟，顺带吃掉 breaks:true
+     给占位符行发的 <br>；<li> 等处的块级内容本就合法，不碰。 */
+  html = html.replace(/<p>([\s\S]*?)<\/p>/g, (m, inner) => {
+    if (!/§§(?:ASK|FOLD):\d+§§/.test(inner)) return m;
+    let out = '';
+    for (const seg of inner.split(/(?:\s|<br\s*\/?>)*(§§(?:ASK|FOLD):\d+§§)(?:\s|<br\s*\/?>)*/g)) {
+      if (!seg) continue;
+      if (/^§§(?:ASK|FOLD):\d+§§$/.test(seg)) out += seg;
+      else if (seg.replace(/<br\s*\/?>/g, '').trim()) out += `<p>${seg}</p>`;
+    }
+    return out;
+  });
   // 还原占位符
   html = html
     .replace(/§§ASK:(\d+)§§/g, (_, i) => {
@@ -3564,6 +3578,27 @@ async function newSession() {
   saveSessions();
   renderSessionList();
 }
+/* macOS WKWebView IME 兜底：focus 空 contenteditable 后 Selection 可能没落进框内，
+   输入法拿不到插入点，首个按键绕过 IME 直接落 ASCII（"nihao"→"n你好"）。
+   显式把光标放到框内末尾即可让 IME 从第一个键就生效；已有光标在框内则不动。 */
+function placeCaretAtEnd(el) {
+  try {
+    const sel = window.getSelection();
+    if (!sel) return;
+    if (sel.rangeCount && el.contains(sel.getRangeAt(0).startContainer)) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } catch (_) {}
+}
+/* 程序化聚焦 composer 统一走这里：推迟到下一帧（避开当前事件派发/DOM 重排），
+   focus 后立即放置光标，双保险修 IME 首字失效。 */
+function focusComposerInput(el) {
+  if (!el) return;
+  requestAnimationFrame(() => { el.focus(); placeCaretAtEnd(el); });
+}
 /* §AA: 新对话=草稿态（对标 Cursor/ChatGPT）——只切到空聊天窗，不落本地行、不打桥接；
    真实创建点=sendPrompt/上传的 !activeId 惰性 newSession 兜底（首次输入）。
    离开路径: setActiveSession（点行/发送后创建）自动退出草稿态。 */
@@ -3578,7 +3613,7 @@ function openDraftChat() {
   syncPlanPollTimer();
   refreshStatusLabel();
   renderSessionList();       // 签名含 activeId, 清活跃行高亮
-  if (inputEl) inputEl.focus();
+  focusComposerInput(inputEl);
 }
 function sessionNeedsHydrate(sess) {
   return !!(sess?.bridgeSessionId && state.bridgeReady && !sess.messages.length);
@@ -6903,6 +6938,10 @@ function bindComposerInRoot(root, opts) {
   const plusBtn = root.querySelector('.composer-plus');
   const menu = root.querySelector('.composer-menu');
   const sendBtn = root.querySelector('.send');
+
+  // 任何路径（点击/Tab/程序化）聚焦后都确保光标真正落在框内——WKWebView 下
+  // 空 contenteditable 聚焦后无插入点时，输入法首字会绕过 IME（见 placeCaretAtEnd）
+  input?.addEventListener('focus', () => placeCaretAtEnd(input));
 
   function closeMenu() {
     if (!menu) return;
