@@ -143,6 +143,7 @@ let bridgeUiOffline = false;
         if (msg.type === 'bridge-ready') emit('bridge-ready', msg);
         else if (msg.type === 'services.snapshot' || msg.type === 'service.changed') handleServiceWs(msg);
         else if (msg.type === 'session-state') emit('bridge-notification', msg);
+        else if (msg.type === 'tokenplan.imported') emit('tokenplan-imported', msg);
         else if (msg.type === 'bridge-log') emit('bridge-log', msg.payload || msg);
         else if (msg.type === 'bridge-error') emit('bridge-error', msg.payload || msg);
       });
@@ -304,6 +305,7 @@ let bridgeUiOffline = false;
     onBridgeLog: (cb) => on('bridge-log', cb),
     onServiceState: (cb) => on('service-state', cb),
     onOpenSearch: (cb) => on('open-search', cb),
+    onTokenplanImported: (cb) => on('tokenplan-imported', cb),
   };
 
   connectWs();
@@ -5664,6 +5666,13 @@ window.ga.onBridgeNotification((msg) => {
       }
     }
   }
+});
+/* Deep link 导入完成（桥接兑换票据写入 mykey 后广播）：提示 + 刷新模型列表。
+   冷启动兜底：即使广播早于本页连上 WS，启动路径的 loadModelProfiles 也会读到已落盘的新 key。 */
+window.ga.onTokenplanImported((msg) => {
+  const models = Array.isArray(msg?.models) ? msg.models.join(', ') : '';
+  showChanToast(t('sys.tokenplanImported'), models, 'ok');
+  loadModelProfiles().catch(() => {});
 });
 window.ga.onBridgeError((err) => { console.warn('[bridge error]', err); });
 window.ga.onBridgeClosed(() => {
