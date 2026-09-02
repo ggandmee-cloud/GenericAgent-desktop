@@ -2486,22 +2486,21 @@ def _restart_local_hub() -> None:
 
 
 async def _hub_pair_ready(base: str, *, fresh: bool = False) -> dict:
-    """GET /pair then /pair/status; return status dict or raise."""
+    """GET /pair then /pair/status; return status dict or raise.
+    多手机 hub: 顶层 status 是配对码状态(waiting/idle/error), 手机连接态在 phones[]; 老 hub 顶层 status 可为 connected。"""
     import aiohttp
     timeout = aiohttp.ClientTimeout(total=8)
     pair = f"{base}/pair" + ("?fresh=1" if fresh else "")
     async with aiohttp.ClientSession(timeout=timeout) as sess:
         async with sess.get(pair) as r:
             await r.read()
-        # fresh create_code 可能要 1–2s 才写出 invite.code；已连接则没有 code。
-        # paired(已存房间)也立即返回: 等重连的 hub 永远不出码, 白等 5s 只为超时。
+        # create_code 可能要 1–2s 才写出 code; 出码失败(error)不用等满
         data = {}
         for _ in range(15):
             async with sess.get(f"{base}/pair/status") as r:
                 data = await r.json(content_type=None)
             if isinstance(data, dict) and (
-                data.get("code") or data.get("status") == "connected"
-                or data.get("paired")
+                data.get("code") or data.get("status") in ("connected", "error")
             ):
                 return data
             await asyncio.sleep(0.35)
@@ -2521,14 +2520,14 @@ async def pclink_pair_info_handler(request):
     want_fresh = str(request.query.get("fresh") or "").lower() in ("1", "true", "yes")
     try:
         st = await _hub_pair_ready(base, fresh=False)
-        # OTA 后旧 hub 进程可能仍占端口（无 qr_payload 字段）→ 强制换新
-        if "qr_payload" not in st and st.get("status") != "connected":
+        # OTA 后旧 hub 进程可能仍占端口(单手机契约: 无 phones 字段)→ 强制换新, 否则第二台手机扫码会把第一台踢下线
+        if "phones" not in st:
             _restart_local_hub()
             base, port = _hub_web_base()
             pair_url = f"{base}/pair"
             status_url = f"{base}/pair/status"
             st = await _hub_pair_ready(base, fresh=False)
-            if "qr_payload" not in st and st.get("status") != "connected":
+            if "phones" not in st:
                 return json_ok({
                     "ok": False,
                     "error": "hub 未更新，请完全退出并重开 GenericAgent",
@@ -2536,15 +2535,10 @@ async def pclink_pair_info_handler(request):
                     "pairUrl": pair_url,
                     "statusUrl": status_url,
                 })
-        # 已连接不要拆线重发码（否则手机反复重连、桌面一直冒「已连接」）。
-        # 已配对(paired)同样不许自动 fresh: 升级重启/手机熄屏时打开本弹窗, 手机只是暂时
-        # 不在线, fresh 会清掉唯一的配对房间 → 手机永远重连不上, 表现为「一升级就得重扫」。
-        # 兜底 fresh 只留给「从未配对且确实出不了码」; 显式换绑走「重新配对」按钮(want_fresh)。
-        if want_fresh or (not st.get("paired")
-                          and st.get("status") != "connected" and not st.get("code")):
+        # fresh 只换码不碰已连手机; 码过期/出错(非 waiting)也补一枚
+        if want_fresh or (not st.get("code") and st.get("status") != "waiting"):
             st = await _hub_pair_ready(base, fresh=True)
-        if (st.get("status") != "connected" and not st.get("code")
-                and not st.get("paired")):
+        if not st.get("code"):
             return json_ok({
                 "ok": False,
                 "error": st.get("error") or "配对码生成中，请稍后再试",
@@ -2567,10 +2561,36 @@ async def pclink_pair_info_handler(request):
         "pairUrl": pair_url,
         "statusUrl": status_url,
         "status": st.get("status"),
-        "paired": st.get("paired"),
         "code": st.get("code"),
         "qr_payload": st.get("qr_payload"),
+        "phones": st.get("phones") or [],
+        "connected": st.get("connected") or 0,
     })
+
+
+async def pclink_pair_forget_handler(request):
+    """Proxy hub POST /pair/forget?slot= (移除一台已配对手机; 其余手机不受影响)."""
+    if not local_write_allowed(request):   # CORS 全开 + 破坏性写 ⇒ 与 mykey 面同一道 Origin 守卫
+        return json_ok({"ok": False, "error": "forbidden origin"}, 403)
+    try:
+        slot = str((await request.json()).get("slot") or "").strip()
+    except Exception:
+        slot = ""
+    if not slot:
+        return json_ok({"ok": False, "error": "slot required"})
+    try:
+        base, _port = _hub_web_base()
+        import aiohttp
+        timeout = aiohttp.ClientTimeout(total=8)
+        async with aiohttp.ClientSession(timeout=timeout) as sess:
+            async with sess.post(f"{base}/pair/forget", params={"slot": slot}) as r:
+                data = await r.json(content_type=None)
+        if isinstance(data, dict):
+            data.setdefault("ok", True)
+            return json_ok(data)
+        return json_ok({"ok": False, "error": "bad forget payload"})
+    except Exception as e:
+        return json_ok({"ok": False, "error": str(e)})
 
 
 async def pclink_pair_status_handler(request):
@@ -2876,6 +2896,7 @@ def create_app():
     app.router.add_post("/ota/recycle", ota_recycle_handler)
     app.router.add_get("/pclink/pair-info", pclink_pair_info_handler)
     app.router.add_get("/pclink/pair-status", pclink_pair_status_handler)
+    app.router.add_post("/pclink/pair-forget", pclink_pair_forget_handler)
     app.router.add_post("/services/start", service_start_handler)
     app.router.add_post("/services/stop", service_stop_handler)
     app.router.add_get("/services/logs", service_logs_handler)

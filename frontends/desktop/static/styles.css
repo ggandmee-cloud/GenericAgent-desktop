@@ -179,6 +179,16 @@ button, input, select, textarea{ font-family:inherit; }
 #confirm-modal{ z-index:700; }
 /* 手机互联从设置里弹出；Settings 在 DOM 更靠后，同级 z-index 会被盖住 */
 #pclink-modal{ z-index:720; }
+/* 已配对手机列表(一台 PC 多台手机): 二维码常显供再加一台, 列表管在线态与移除 */
+.pclink-phones-head{ margin:22px 0 4px; text-align:left; font-size:12px; color:var(--muted); font-weight:var(--w-medium, 500); }
+.pclink-phones{ margin:0; padding:0; list-style:none; text-align:left; border-top:1px solid var(--line-soft); }
+.pclink-phones li{ display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line-soft); font-size:13px; }
+.pclink-phones li.none{ justify-content:center; color:var(--muted); }
+.pclink-phones .dot{ flex:none; width:8px; height:8px; border-radius:50%; background:var(--muted2); }
+.pclink-phones .dot.ok{ background:var(--ok); box-shadow:0 0 0 3px var(--ok-ring); }
+.pclink-phones .lbl{ flex:1; min-width:0; }
+.pclink-phones .lbl small{ display:block; color:var(--muted); font-size:11px; }
+.pclink-phones .set-btn{ padding:3px 10px; font-size:12px; }
 .modal-backdrop{ position:absolute; inset:0; background:var(--overlay); }
 .modal-card{
   position:relative; width:420px; max-width:92vw; max-height:86vh; overflow:hidden;
