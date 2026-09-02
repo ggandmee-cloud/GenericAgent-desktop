@@ -11,12 +11,33 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
+# 探测器(tokenplan_plugin)按此判断是否需要强制升级已装插件——安全修复必须递增。
+# 与 pyproject.toml 的 version 保持一致（manifest 版本 == 模块版本）。
+PLUGIN_VERSION = "1.1.0"
+
 INVITE_CODE = os.environ.get("GA_TOKENPLAN_INVITE", "ljq")
 PORTAL_URL = os.environ.get("GA_TOKENPLAN_URL", "https://plan.khrey.com/").rstrip("/") + "/"
 HOST, PORT = "127.0.0.1", 34134
 BEGIN, END = "########### <TOKENPLAN>", "########### </TOKENPLAN>"
 _RE = re.compile(r"###########\s*<TOKENPLAN>\s*\n.*?###########\s*</TOKENPLAN>\s*\n?", re.S)
 _lock, _httpd, _last = threading.Lock(), None, None
+
+
+def _allowed_origins() -> set:
+    """写入端 Origin 白名单：门户自身 + GA_TOKENPLAN_EXTRA_ORIGINS（逗号分隔）。"""
+    out = set()
+    try:
+        p = urlparse(PORTAL_URL)
+        if p.scheme and p.netloc:
+            out.add(f"{p.scheme}://{p.netloc}")
+    except Exception:
+        pass
+    out.add("https://plan.khrey.com")
+    for o in (os.environ.get("GA_TOKENPLAN_EXTRA_ORIGINS") or "").split(","):
+        o = o.strip().rstrip("/")
+        if o:
+            out.add(o)
+    return out
 
 
 def _ga_root() -> Path:
@@ -129,13 +150,23 @@ class _H(BaseHTTPRequestHandler):
     def log_message(self, f, *a):
         sys.stderr.write(f"[sp] {f % a}\n")
 
+    def _req_origin(self) -> str:
+        return (self.headers.get("Origin") or "").strip().rstrip("/")
+
+    def _origin_ok(self) -> bool:
+        """写入守卫：浏览器跨域 POST 必带 Origin → 白名单卡死；
+        无 Origin（curl / 桥接本机调用）放行——本机进程本就能直接写文件，不属浏览器威胁面。"""
+        o = self._req_origin()
+        return (not o) or (o in _allowed_origins())
+
     def _cors(self):
-        for k, v in (
-            ("Access-Control-Allow-Origin", "*"),
-            ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
-            ("Access-Control-Allow-Headers", "Content-Type"),
-        ):
-            self.send_header(k, v)
+        # 只对白名单 Origin 反射 CORS；其余不发（浏览器读不到响应，POST 也会被 _origin_ok 拒）
+        o = self._req_origin()
+        if o and o in _allowed_origins():
+            self.send_header("Access-Control-Allow-Origin", o)
+            self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def _j(self, code, obj):
         b = json.dumps(obj, ensure_ascii=False).encode()
@@ -173,10 +204,14 @@ class _H(BaseHTTPRequestHandler):
             self._j(400, _last)
 
     def do_GET(self):
-        q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items() if v}
-        (self._apply(q) if any(q.get(k) for k in ("snippet", "block")) else self._j(200, {"ok": True, "port": PORT}))
+        # GET 永不写入：snippet 会被 import 执行，GET 写入曾构成 no-referrer <img> 驱动的
+        # drive-by RCE（无 Origin/Referer 可查）。GET 只保留探测语义。
+        self._j(200, {"ok": True, "port": PORT, "version": PLUGIN_VERSION})
 
     def do_POST(self):
+        if not self._origin_ok():
+            self._j(403, {"ok": False, "error": "origin_forbidden"})
+            return
         d = self._body()
         for k, v in parse_qs(urlparse(self.path).query).items():
             d.setdefault(k, v[0] if v else "")
@@ -185,12 +220,13 @@ class _H(BaseHTTPRequestHandler):
 
 def ensure_callback_server(port=None):
     global _httpd, PORT
-    if port:
+    if port is not None:
         PORT = int(port)
     with _lock:
         if _httpd:
             return callback_base_url()
         _httpd = HTTPServer((HOST, PORT), _H)
+        PORT = _httpd.server_address[1]  # port=0（测试用随机端口）时回填实际端口
         threading.Thread(target=_httpd.serve_forever, kwargs={"poll_interval": 0.5}, daemon=True).start()
         return callback_base_url()
 
@@ -227,6 +263,8 @@ def start_subscription_portal(*, open_browser=True, nonce=None, extra_query=None
 
 
 start = start_subscription_portal
+# 版本随函数走：探测器无论从 agentmain 还是模块拿到 fn 都能读到，用于强制升级判定
+start_subscription_portal.__plugin_version__ = PLUGIN_VERSION
 
 # 前端探测点：有插件才有此属性（开源包无文件则无入口）
 try:
