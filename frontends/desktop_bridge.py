@@ -1707,6 +1707,24 @@ def cors_headers():
     }
 
 
+def _local_write_origins() -> set:
+    """写敏感端点允许的浏览器 Origin：桌面壳自身的 UI 源。"""
+    port = os.environ.get("BRIDGE_PORT", "14168")
+    return {
+        f"http://127.0.0.1:{port}", f"http://localhost:{port}",
+        "tauri://localhost", "https://tauri.localhost",
+    }
+
+
+def local_write_allowed(request) -> bool:
+    """写 mykey 类端点的 Origin 守卫。CORS 中间件全开（*）意味着任意网页都能把
+    请求打到 127.0.0.1:14168——对「写入即被 import 执行」的 mykey 面必须再卡一道：
+    浏览器跨域请求必带 Origin → 只认桌面 UI 自己的源；无 Origin（桌面壳内部线程 /
+    本机 curl）放行，本机进程不属浏览器威胁面。"""
+    o = (request.headers.get("Origin") or "").strip().rstrip("/")
+    return (not o) or (o in _local_write_origins())
+
+
 @web.middleware
 async def cors_middleware(request, handler):
     if request.method == "OPTIONS":
@@ -2224,6 +2242,8 @@ async def mykey_get_handler(request):
 
 
 async def mykey_save_handler(request):
+    if not local_write_allowed(request):
+        return json_ok({"ok": False, "error": "origin_forbidden"}, status=403)
     data = await read_json(request)
     content = data.get("content")
     if content is None:

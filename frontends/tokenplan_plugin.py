@@ -10,6 +10,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -22,9 +23,24 @@ COMPONENT = "ga-tokenplan-import"
 INSTALL_PATH = "plugins/subscription_portal.py"
 DEFAULT_MANIFEST = "https://plan.khrey.com/desktop/plugin-manifest.json"
 DEFAULT_FEED = "https://plan.khrey.com/desktop/latest.json"
+# 已装插件低于该版本视为未安装 → 走 manifest 强制重装。1.1.0 = 废 GET 写入 + Origin 白名单，
+# 安全修复必须触达存量用户（probe 命中即返回的旧行为把他们永远留在了漏洞版）。
+MIN_PLUGIN_VERSION = "1.1.0"
 MAX_BYTES = 2 * 1024 * 1024
 _UA = {"User-Agent": "GA-Desktop-TokenPlan", "Accept": "application/json"}
 _lock = threading.Lock()
+
+
+def _ver_tuple(v) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", str(v or ""))[:3]) or (0,)
+
+
+def _fn_version(fn) -> str:
+    return str(getattr(fn, "__plugin_version__", "") or "")
+
+
+def _fn_meets_min(fn) -> bool:
+    return _ver_tuple(_fn_version(fn)) >= _ver_tuple(MIN_PLUGIN_VERSION)
 
 
 def _log(msg: str) -> None:
@@ -68,8 +84,20 @@ def _import_agentmain(root: Path):
         return None
 
 
-def probe_start(root: Optional[Path] = None) -> Optional[Callable]:
-    """Return start_subscription_portal if it is already loadable. No network."""
+def probe_start(root: Optional[Path] = None, *, min_version: bool = True) -> Optional[Callable]:
+    """Return start_subscription_portal if it is already loadable. No network.
+
+    min_version=True（默认）时，版本低于 MIN_PLUGIN_VERSION 的旧插件按未安装处理，
+    让 ensure_start 走 manifest 重装——否则安全修复永远到不了已装用户。
+    """
+    fn = _probe_start_any(root)
+    if fn and min_version and not _fn_meets_min(fn):
+        _log(f"plugin version {_fn_version(fn) or 'unknown'} < {MIN_PLUGIN_VERSION}, treating as missing")
+        return None
+    return fn
+
+
+def _probe_start_any(root: Optional[Path] = None) -> Optional[Callable]:
     root = _ga_root(root)
     am = _import_agentmain(root)
     fn = _get_start(am) if am is not None else None
@@ -140,6 +168,7 @@ def probe_status(root: Optional[Path] = None) -> dict:
         "installed": bool(fn),
         "available": True,  # desktop can always attempt the official manifest
         "source": source,
+        "version": _fn_version(fn) if fn else "",
     }
 
 
@@ -267,19 +296,53 @@ def install_from_manifest(root: Optional[Path] = None, man: Optional[dict] = Non
     return dest
 
 
+def _flush_plugin_modules() -> None:
+    for name in list(sys.modules):
+        if name == "plugins.subscription_portal" or name.startswith("ga_tokenplan_import"):
+            sys.modules.pop(name, None)
+    importlib.invalidate_caches()
+
+
 def ensure_start(root: Optional[Path] = None) -> Callable:
-    """Probe first; download from the official manifest only on a miss."""
+    """Probe first; download from the official manifest on a miss or an outdated install."""
     root = _ga_root(root)
     with _lock:
         fn = probe_start(root)
         if fn:
             return fn
-        install_from_manifest(root)
-        for name in list(sys.modules):
-            if name == "plugins.subscription_portal" or name.startswith("ga_tokenplan_import"):
-                sys.modules.pop(name, None)
-        importlib.invalidate_caches()
+        try:
+            install_from_manifest(root)
+        except Exception as e:
+            # 重装失败（离线/manifest 未更新）：有旧版可用时降级放行并告警，胜过彻底不可用
+            fn = _probe_start_any(root)
+            if fn:
+                _log(f"reinstall failed ({e}); falling back to installed version {_fn_version(fn) or 'unknown'}")
+                return fn
+            raise
+        _flush_plugin_modules()
         fn = probe_start(root)
+        if fn:
+            return fn
+        # 装上了但 manifest 仍是旧版：接受并告警，等服务端镜像更新后下次升级
+        fn = _probe_start_any(root)
         if not fn:
             raise RuntimeError("plugin installed but start_subscription_portal is missing")
+        _log(f"manifest still serves {_fn_version(fn) or 'unknown'} < {MIN_PLUGIN_VERSION}; using it anyway")
         return fn
+
+
+def ensure_apply(root: Optional[Path] = None) -> Callable:
+    """Return the plugin's apply_profile_to_mykey (installing the plugin if needed).
+
+    取自 start fn 的模块 globals：无论 fn 来自 plugins/ 还是 extras/，写入逻辑
+    （<TOKENPLAN> 块合并 + 双写目标）都跟着同一模块走。
+    """
+    fn = ensure_start(root)
+    apply_fn = None
+    try:
+        apply_fn = fn.__globals__.get("apply_profile_to_mykey")
+    except Exception:
+        apply_fn = None
+    if not callable(apply_fn):
+        raise RuntimeError("plugin lacks apply_profile_to_mykey")
+    return apply_fn

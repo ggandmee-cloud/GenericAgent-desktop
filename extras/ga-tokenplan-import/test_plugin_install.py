@@ -25,6 +25,23 @@ STUB_PLUGIN = '''\
 def start_subscription_portal(*, open_browser=True, **_):
     return {"ok": True, "stub": True, "open_browser": open_browser}
 
+start_subscription_portal.__plugin_version__ = "9.9.9"
+
+def apply_profile_to_mykey(*, snippet="", **_):
+    return {"ok": True, "stub_apply": True, "snippet": snippet}
+
+try:
+    import agentmain
+    agentmain.start_subscription_portal = start_subscription_portal
+except Exception:
+    pass
+'''
+
+# 无版本属性 = 存量旧插件（min_version 探测应拒绝并触发重装）
+STUB_PLUGIN_LEGACY = '''\
+def start_subscription_portal(*, open_browser=True, **_):
+    return {"ok": True, "stub": True, "legacy": True}
+
 try:
     import agentmain
     agentmain.start_subscription_portal = start_subscription_portal
@@ -141,6 +158,41 @@ class TokenplanPluginTests(unittest.TestCase):
             tp.fetch_manifest = orig
         self.assertEqual(hits["n"], 0)
         self.assertTrue(callable(fn))
+
+    def test_probe_rejects_outdated_plugin(self):
+        (self.td / "plugins" / "subscription_portal.py").write_text(STUB_PLUGIN_LEGACY, encoding="utf-8")
+        # 无版本属性 = 旧版：默认探测按未安装处理，宽松探测仍可拿到
+        self.assertIsNone(tp.probe_start(self.td))
+        fn = tp.probe_start(self.td, min_version=False)
+        self.assertTrue(callable(fn))
+        st = tp.probe_status(self.td)
+        self.assertFalse(st["installed"])
+
+    def test_ensure_upgrades_outdated_plugin(self):
+        (self.td / "plugins" / "subscription_portal.py").write_text(STUB_PLUGIN_LEGACY, encoding="utf-8")
+        packed = self.td / "packed"
+        public = self._start_http(packed)
+        build_release(packed, public)
+        os.environ["GA_TOKENPLAN_PLUGIN_MANIFEST"] = f"{public}/plugin-manifest.json"
+        fn = tp.ensure_start(self.td)
+        self.assertTrue(callable(fn))
+        # 旧插件已被 manifest 里打包的真实插件覆盖（带版本号）
+        text = (self.td / "plugins" / "subscription_portal.py").read_text(encoding="utf-8")
+        self.assertIn("PLUGIN_VERSION", text)
+        self.assertNotIn("legacy", text)
+
+    def test_ensure_falls_back_to_outdated_when_reinstall_fails(self):
+        (self.td / "plugins" / "subscription_portal.py").write_text(STUB_PLUGIN_LEGACY, encoding="utf-8")
+        os.environ["GA_TOKENPLAN_PLUGIN_MANIFEST"] = "http://127.0.0.1:9/nope.json"  # 不可达
+        fn = tp.ensure_start(self.td)
+        self.assertTrue(callable(fn))
+        self.assertEqual(fn()["legacy"], True)
+
+    def test_ensure_apply_returns_writer(self):
+        (self.td / "plugins" / "subscription_portal.py").write_text(STUB_PLUGIN, encoding="utf-8")
+        apply_fn = tp.ensure_apply(self.td)
+        self.assertTrue(callable(apply_fn))
+        self.assertEqual(apply_fn(snippet="X")["stub_apply"], True)
 
     def test_ensure_downloads_on_miss(self):
         packed = self.td / "packed"
