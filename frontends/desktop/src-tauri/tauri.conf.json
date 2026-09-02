@@ -5,6 +5,13 @@
   "build": {
     "frontendDist": "../static"
   },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["genericagent"]
+      }
+    }
+  },
   "app": {
     "withGlobalTauri": true,
     "security": {

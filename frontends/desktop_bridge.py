@@ -2827,12 +2827,83 @@ async def ota_recycle_handler(request):
     return json_ok({"ok": True, "exiting": True})
 
 
-async def subscription_portal_handler(request):
-    root = manager.ensure_ga_import_path()
+def _import_tokenplan_plugin():
     try:
         import tokenplan_plugin as tp
     except ImportError:
         from frontends import tokenplan_plugin as tp
+    return tp
+
+
+async def tokenplan_resident_start():
+    """TokenPlan 34134 回调常驻：插件已装（且非漏洞旧版）则静默起监听——
+    plan.khrey.com 网页端「导入桌面 GA」按钮探测到端口即可直连导入，无需先在
+    客户端点 GA Token。新用户没装插件时静默跳过：他们的冷启动路径是 deep link
+    （genericagent:// → /tokenplan/import-ticket，兑换时才现装插件）。"""
+    try:
+        root = manager.ensure_ga_import_path()
+        tp = _import_tokenplan_plugin()
+        fn = await asyncio.to_thread(tp.probe_start, root)
+        if not fn:
+            return
+        r = await asyncio.to_thread(lambda: fn(open_browser=False))
+        print(f"[bridge] tokenplan callback resident: {(r or {}).get('callback_url', '')}", file=sys.stderr)
+    except Exception as e:
+        # 34134 被占（残留进程）等：不拖垮桥接启动，点 GA Token 时仍会重试
+        print(f"[bridge] tokenplan resident skipped: {e}", file=sys.stderr)
+
+
+_TICKET_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+
+
+async def tokenplan_import_ticket_handler(request):
+    """Deep link 冷启动导入：genericagent://tokenplan/import?ticket=… → 壳转发到这里。
+    凭一次性票据向门户 HTTPS 兑换 snippet（key 不进 URL/日志），经插件写入 mykey，
+    完成后 WS 广播 tokenplan.imported 让前端刷新模型列表。"""
+    if not local_write_allowed(request):
+        return json_ok({"ok": False, "error": "origin_forbidden"}, status=403)
+    data = await read_json(request)
+    ticket = str(data.get("ticket") or "").strip()
+    if not _TICKET_RE.match(ticket):
+        return json_ok({"ok": False, "error": "bad_ticket"}, status=400)
+    portal = (os.environ.get("GA_TOKENPLAN_URL") or "https://plan.khrey.com").rstrip("/")
+
+    def _redeem():
+        from urllib.request import Request, urlopen
+        req = Request(
+            portal + "/api/desktop/import-ticket/redeem",
+            data=json.dumps({"ticket": ticket}).encode(),
+            headers={"Content-Type": "application/json", "User-Agent": "GA-Desktop-TokenPlan"},
+            method="POST",
+        )
+        with urlopen(req, timeout=20) as r:
+            return json.loads(r.read().decode())
+
+    try:
+        resp = await asyncio.to_thread(_redeem)
+    except Exception as e:
+        return json_ok({"ok": False, "error": f"redeem_failed: {e}"}, status=502)
+    snippet = str(resp.get("snippet") or "")
+    if not (resp.get("ok") and snippet):
+        return json_ok({"ok": False, "error": str(resp.get("error") or "ticket_rejected")}, status=502)
+    root = manager.ensure_ga_import_path()
+    tp = _import_tokenplan_plugin()
+    try:
+        apply_fn = await asyncio.to_thread(tp.ensure_apply, root)
+        res = await asyncio.to_thread(lambda: apply_fn(snippet=snippet))
+    except Exception as e:
+        return json_ok({"ok": False, "error": f"apply_failed: {e}"}, status=500)
+    manager._invalidate_mykey_cache()
+    manager._reload_live_agents()
+    asyncio.create_task(tokenplan_resident_start())  # 插件此刻必已安装，顺手把 34134 常驻起来
+    payload = {"plan": resp.get("plan"), "models": resp.get("models"), "paths": (res or {}).get("paths")}
+    hub.emit({"type": "tokenplan.imported", **payload})
+    return json_ok({"ok": True, **payload})
+
+
+async def subscription_portal_handler(request):
+    root = manager.ensure_ga_import_path()
+    tp = _import_tokenplan_plugin()
     if request.method == "GET":
         # Probe only — do not download. Button stays visible; POST installs on demand.
         st = await asyncio.to_thread(tp.probe_status, root)
@@ -2890,6 +2961,7 @@ def create_app():
     app.router.add_post("/token-history", post_token_history_handler)
     app.router.add_get("/subscription-portal", subscription_portal_handler)
     app.router.add_post("/subscription-portal", subscription_portal_handler)
+    app.router.add_post("/tokenplan/import-ticket", tokenplan_import_ticket_handler)
     app.router.add_get("/ota/status", ota_status_handler)
     app.router.add_post("/ota/apply", ota_apply_handler)
     app.router.add_post("/ota/apply-shell", ota_apply_shell_handler)
@@ -2927,6 +2999,7 @@ def create_app():
         hub.loop = asyncio.get_running_loop()
         services.autostart_extras()
         _wire_ga_hub(manager)
+        asyncio.create_task(tokenplan_resident_start())
 
     async def on_shutdown(app):
         services.stop_all_extras()

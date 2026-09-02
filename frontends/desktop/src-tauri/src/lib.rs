@@ -1119,11 +1119,87 @@ fn clear_ga_source(app_handle: tauri::AppHandle) -> Result<String, String> {
     switch_bridge(&app_handle)
 }
 
+/// genericagent://tokenplan/import?ticket=… → 转发桥接 POST /tokenplan/import-ticket。
+/// 壳只做「捕获 + 等桥接就绪 + 转发」；票据兑换/mykey 写入/WS 广播全在桥接完成，
+/// 前端加载后经 WS（tokenplan.imported）或初始模型拉取自然看到结果——冷启动时
+/// deep link 早于桥接/前端就绪的时序由这里的等待吸收，不依赖 webview 事件。
+fn handle_deeplink_url(url: &str) {
+    let Ok(u) = tauri::Url::parse(url) else { return; };
+    if u.scheme() != "genericagent" {
+        return;
+    }
+    if u.host_str() != Some("tokenplan") || u.path() != "/import" {
+        eprintln!("[deeplink] unknown action: {}", url);
+        return;
+    }
+    let Some(ticket) = u.query_pairs().find(|(k, _)| k == "ticket").map(|(_, v)| v.to_string()) else { return; };
+    let valid = (16..=128).contains(&ticket.len())
+        && ticket.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if !valid {
+        return;
+    }
+    thread::spawn(move || {
+        // 冷启动首次运行可能正在解包 runtime，给足等待
+        if !wait_for_port(14168, Duration::from_secs(300)) {
+            eprintln!("[deeplink] bridge never came up; ticket dropped");
+            return;
+        }
+        for attempt in 0u32..3 {
+            if post_import_ticket(&ticket) {
+                return;
+            }
+            thread::sleep(Duration::from_secs(2u64 << attempt));
+        }
+        eprintln!("[deeplink] import-ticket forward failed after retries");
+    });
+}
+
+/// Loopback-only, plaintext HTTP to our own bridge — hand-rolled over TcpStream like
+/// bridge_reported_identity(), so no extra HTTP client dependency.
+fn post_import_ticket(ticket: &str) -> bool {
+    use std::io::{Read, Write};
+    let body = serde_json::json!({ "ticket": ticket }).to_string();
+    let Ok(mut stream) = TcpStream::connect_timeout(
+        &"127.0.0.1:14168".parse().unwrap(),
+        Duration::from_millis(1500),
+    ) else { return false; };
+    // 兑换含 HTTPS 回源，冷启动还要现装导入插件，读超时放宽
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(90)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+    let req = format!(
+        "POST /tokenplan/import-ticket HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(), body
+    );
+    if stream.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = Vec::new();
+    let _ = stream.read_to_end(&mut buf);
+    let text = String::from_utf8_lossy(&buf);
+    let ok = text.starts_with("HTTP/1.1 200") || text.starts_with("HTTP/1.0 200");
+    if !ok {
+        eprintln!("[deeplink] bridge replied: {}", text.lines().next().unwrap_or("(empty)"));
+    }
+    ok
+}
+
+/// Windows/Linux deliver deep links via argv (cold start) or the second instance's argv
+/// (single-instance callback). macOS uses on_open_url instead; scanning is harmless there.
+fn scan_args_for_deeplink<I: IntoIterator<Item = String>>(args: I) {
+    for a in args {
+        if a.starts_with("genericagent://") {
+            handle_deeplink_url(&a);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
     let no_autostart = args.iter().any(|a| a == "--no-autostart");
     let dev_mode = args.iter().any(|a| a == "--dev");
+    // Win/Linux 冷启动：OS 把 genericagent:// 放在 argv 里
+    scan_args_for_deeplink(args.iter().cloned());
 
     // Resolve the effective config once. project_dir is ALWAYS the bundle's own (方案三: we run
     // our own bridge/frontend); the external核, if any, is injected via GA_ROOT in
@@ -1156,19 +1232,39 @@ pub fn run() {
     }
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // Win/Linux: deep link 到达已运行实例时在第二实例的 argv 里
+            scan_args_for_deeplink(args.iter().cloned());
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
                 let _ = w.show();
                 let _ = w.set_focus();
             }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![start_bridge_with_config, start_bridge, restart_runtime, get_shell_version, exit_for_shell_ota, get_config, export_mykey, pick_directory, get_ga_source, set_ga_source, clear_ga_source, move_ga_runtime, shortcut_should_ask, shortcut_decide, get_prepare_error])
         .setup(move |app| {
             // Show the loading window immediately so the first-run prepare isn't a blank screen.
             // The window starts on loading.html (a local page), so no "connection refused" flash.
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
+            }
+
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                // 便携包自愈注册（macOS 由 .app Info.plist + LaunchServices 负责，运行时注册无效）
+                #[cfg(any(windows, target_os = "linux"))]
+                {
+                    if let Err(e) = app.deep_link().register_all() {
+                        eprintln!("[deeplink] register_all: {}", e);
+                    }
+                }
+                // macOS 冷/热启动统一走系统 open-url 事件；Win/Linux 热启动走 single-instance argv
+                app.deep_link().on_open_url(|event| {
+                    for url in event.urls() {
+                        handle_deeplink_url(url.as_str());
+                    }
+                });
             }
 
             let handle = app.handle().clone();
