@@ -1071,65 +1071,84 @@ async function startGaTokenPortalFlow() {
 }
 bindClick('ga-token-btn', (e) => { e.stopPropagation(); startGaTokenPortalFlow(); });
 
-/* 手机互联：设置内 modal 出示 hub 配对码 + QR（载荷 ga-pclink:v1:<9digits>） */
+/* 手机互联：设置内 modal 出示 hub 配对码 + QR（载荷 ga-pclink:v1:<9digits>）。
+   一台 PC 多台手机: 顶层 status 是配对码状态(waiting/idle/error), 二维码常显供再加一台;
+   手机连接态在 phones[](connected/reconnecting/error), 逐台可移除。modal 开着就一直轮询。 */
 let _pclinkPoll = null;
 let _pclinkPairUrl = '';
 let _pclinkTickBusy = false;
-let _pclinkToasted = false;
-let _pclinkSawUnlinked = false;
-let _pclinkLinked = false;
+let _pclinkSeenConnected = null;   // 上一拍已连接台数; null=尚未读到首拍(打开时已连着的不冒 toast)
 function stopPcLinkPoll() {
   if (_pclinkPoll) { clearInterval(_pclinkPoll); _pclinkPoll = null; }
 }
 function pcLinkStatusText(s) {
   const st = String(s?.status || '');
-  // 已配对但手机暂未上线（升级重启/熄屏后常态）：如实说「等手机」，
-  // 而不是「正在重连」+ 一个假的「—」码。想换绑走「重新配对」按钮。
-  if (s?.paired && st !== 'connected' && !s?.qr_payload) {
-    let m = t('sys.pcLinkPairedWait');
-    if (s?.error) m += ' · ' + s.error;
-    return m;
-  }
-  const key = {
-    connected: 'sys.pcLinkConnected',
-    waiting: 'sys.pcLinkWaiting',
-    reconnecting: 'sys.pcLinkReconnecting',
-    idle: 'sys.pcLinkIdle',
-    error: 'err.pcLink',
-  }[st];
+  const key = { waiting: 'sys.pcLinkWaiting', idle: 'sys.pcLinkCodeExpired', error: 'err.pcLink' }[st];
   let msg = key ? t(key) : (st || '');
   if (s?.error) msg += (msg ? ' · ' : '') + s.error;
   return msg;
+}
+function pcLinkPhoneState(p) {
+  const key = { connected: 'sys.pcLinkConnected', reconnecting: 'sys.pcLinkReconnecting', error: 'err.pcLink' }[p.status];
+  return (key ? t(key) : (p.status || '')) + (p.error ? ' · ' + p.error : '');
+}
+function paintPcLinkPhones(phones) {
+  const ul = document.getElementById('pclink-phones');
+  if (!ul) return;
+  ul.textContent = '';
+  if (!phones.length) {
+    const li = document.createElement('li');
+    li.className = 'none';
+    li.textContent = t('modal.pcLinkNoPhones');
+    ul.appendChild(li);
+    return;
+  }
+  phones.forEach((p, i) => {
+    const li = document.createElement('li');
+    const dot = document.createElement('span');
+    dot.className = 'dot' + (p.status === 'connected' ? ' ok' : '');
+    const lbl = document.createElement('span');
+    lbl.className = 'lbl';
+    lbl.textContent = t('modal.pcLinkPhone', { n: i + 1 }) + ' · ' + pcLinkPhoneState(p);
+    const sm = document.createElement('small');
+    sm.textContent = p.saved_at ? t('modal.pcLinkPairedAt', { t: new Date(p.saved_at * 1000).toLocaleString() }) : '';
+    lbl.appendChild(sm);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'set-btn ghost';
+    btn.textContent = t('modal.pcLinkForget');
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      const r = await bridgeFetch('/pclink/pair-forget', { method: 'POST', body: { slot: p.slot } }).catch(err => ({ ok: false, error: err.message || String(err) }));
+      if (r?.ok) { showChanToast(t('sys.pcLinkPhoneRemoved'), '', 'ok'); paintPcLinkStatus(r); }
+      else { btn.disabled = false; showChanToast(t('err.pcLink'), String(r?.error || ''), 'err'); }
+    };
+    li.append(dot, lbl, btn);
+    ul.appendChild(li);
+  });
 }
 function paintPcLinkStatus(s) {
   const codeEl = document.getElementById('pclink-code');
   const stEl = document.getElementById('pclink-state');
   const canvas = document.getElementById('pclink-qr');
   const wrap = document.getElementById('pclink-qr-wrap');
-  const connected = s?.status === 'connected';
-  const pairedWait = !connected && !!s?.paired && !s?.qr_payload;
-  if (codeEl) codeEl.textContent = (connected || pairedWait) ? '' : (s?.code || '—');
+  if (codeEl) codeEl.textContent = s?.code || '—';
   if (stEl) stEl.textContent = pcLinkStatusText(s);
-  if (wrap) wrap.hidden = !s?.qr_payload || connected;
-  if (canvas && s?.qr_payload && !connected && window.QR?.renderCanvas) {
+  if (wrap) wrap.hidden = !s?.qr_payload;
+  if (canvas && s?.qr_payload && window.QR?.renderCanvas) {
     try { QR.renderCanvas(s.qr_payload, canvas, 220); } catch (_) {}
   }
-  _pclinkLinked = connected;
-  if (!connected) _pclinkSawUnlinked = true;
-  if (connected) {
-    stopPcLinkPoll();
-    // 只在「等待中 → 连上」冒一次；打开时已经连着不要刷 toast
-    if (_pclinkSawUnlinked && !_pclinkToasted) {
-      _pclinkToasted = true;
-      showChanToast(t('sys.pcLinkConnected'), '', 'ok');
-    }
-  }
+  const phones = Array.isArray(s?.phones) ? s.phones : [];
+  paintPcLinkPhones(phones);
+  const n = phones.filter(p => p.status === 'connected').length;
+  // 台数增加 = 有新手机扫码连上(或掉线重连回来), 冒一次; 首拍只记账
+  if (_pclinkSeenConnected !== null && n > _pclinkSeenConnected) showChanToast(t('sys.pcLinkConnected'), '', 'ok');
+  _pclinkSeenConnected = n;
 }
 async function openPcLinkModal(opts) {
   stopPcLinkPoll();
-  _pclinkToasted = false;
-  _pclinkSawUnlinked = false;
-  _pclinkLinked = false;
+  _pclinkSeenConnected = null;
   const fresh = !!(opts && opts.fresh);
   const info = await bridgeFetch('/pclink/pair-info' + (fresh ? '?fresh=1' : '')).catch(e => ({ ok: false, error: e.message || String(e) }));
   if (!info?.ok) {
@@ -1142,8 +1161,7 @@ async function openPcLinkModal(opts) {
   }
   _pclinkPairUrl = info.pairUrl || '';
   openModal('pclink-modal');
-  paintPcLinkStatus(info.status ? info : { status: 'idle', code: info.code, qr_payload: info.qr_payload });
-  if (info.status === 'connected') return;
+  paintPcLinkStatus(info);
   const tick = async () => {
     if (_pclinkTickBusy) return;
     _pclinkTickBusy = true;
@@ -1154,8 +1172,6 @@ async function openPcLinkModal(opts) {
       _pclinkTickBusy = false;
     }
   };
-  await tick();
-  if (_pclinkLinked) return;
   const modal = document.getElementById('pclink-modal');
   if (modal && !modal.hidden) _pclinkPoll = setInterval(tick, 1000);
 }
